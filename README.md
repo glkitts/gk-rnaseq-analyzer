@@ -1,1 +1,1 @@
-# gk_rnaseq_analyzer
+# gk-rnaseq-analyzer
