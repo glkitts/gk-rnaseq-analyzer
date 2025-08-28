@@ -1,0 +1,24 @@
+project:
+  name: RNA-seq Analysis Pipeline
+  version: 2.0.0
+  description: Automated DESeq2 analysis and report generation of RNAseq sample data
+  author: Giordan Kitts
+  institute: Yildiz Lab
+paths:
+  metadata_file: shared_resources/metadata/rnaseq_yildiz_metadata.csv
+  salmon_base: ../../../vc-refs/rnaseq_counts
+  annotation_db: shared_resources/annotations/vc_genome_anno.RDS
+analysis:
+  significance_threshold: 0.05
+  fold_change_threshold: 1.0
+  min_counts: 2.0
+plotting:
+  base_size: 8.0
+  figure_width: 7.0
+  figure_height: 5.0
+  dpi: 300.0
+reports:
+  generate_pdf: yes
+  generate_html: no
+  save_plots_separately: yes
+  author_name: Giordan Kitts
