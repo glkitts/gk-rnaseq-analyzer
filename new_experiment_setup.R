@@ -74,6 +74,14 @@ template_content <- gsub(
   fixed = TRUE
 )
 
+template_content <- gsub(
+  "# Experiment name - CHANGE THIS!!",
+  paste0("# Experiment name (must match experiment folder name!)"),
+  template_content,
+  fixed = TRUE
+)
+
+
 # Replace experiment name in the variable assignment
 template_content <- gsub(
   'experiment_name <- "experiment_template"',
