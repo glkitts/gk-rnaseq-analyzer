@@ -5,8 +5,8 @@ project:
   author: Giordan Kitts
   institute: Yildiz Lab
 paths:
-  metadata_file: shared_resources/metadata/rnaseq_yildiz_metadata.csv
-  salmon_base: ../../../vc-refs/rnaseq_counts
+  metadata_file: shared_resources/metadata/rnaseq_yildiz_metadata.xlsx
+  salmon_base: shared_resources/rnaseq_counts
   annotation_db: shared_resources/annotations/vc_genome_anno.RDS
 analysis:
   significance_threshold: 0.05
