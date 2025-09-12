@@ -9,10 +9,17 @@ paths:
   salmon_base: shared_resources/rnaseq_counts
   annotation_db: shared_resources/annotations/vc_genome_anno.RDS
   annotation_subset: shared_resources/annotations/subset_anno.RDS
+  custom_genesets: shared_resources/annotations/yildizlab_genesets.xlsx
+reference:
+  genome_assembly: "GCF_000006745.1"
+  genome_accession: "NC_002505.1"
+  organism: "Vibrio cholerae O1 biovar El Tor str. N16961"
+  annotation_version: "[MicroScope enhanced annotation](https://mage.genoscope.cns.fr/microscope/mage/viewer.php?O_id=43) - generated here: doi.org/10.1186/s12864-018-4716-8 "
 analysis:
   significance_threshold: 0.05
   log2FC_threshold: 1.0
   min_counts: 2.0
+  lfcShrinkage_method: "ashr"
 plotting:
   base_size: 8.0
   figure_width: 7.0

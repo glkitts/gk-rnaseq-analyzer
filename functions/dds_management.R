@@ -141,9 +141,9 @@ save_dds_with_metadata <- function(dds,
   
   # Create output directories and file paths
   outputs_dir <- ensure_experiment_outputs(experiment_name)
-  dds_path <- file.path(outputs_dir, paste0(experiment_name, ".dds.RDS"))
-  metadata_path <- file.path(outputs_dir, paste0(experiment_name, ".metadata.yaml"))
-  coldata_path <- file.path(outputs_dir, paste0(experiment_name, ".coldata.csv"))
+  dds_path <- file.path(outputs_dir, "R", paste0(experiment_name, ".dds.RDS"))
+  metadata_path <- file.path(outputs_dir, "metadata", paste0(experiment_name, ".metadata.yaml"))
+  coldata_path <- file.path(outputs_dir, "metadata", paste0(experiment_name, ".coldata.csv"))
   
   # Extract coldata if not provided
   if (is.null(coldata)) {
