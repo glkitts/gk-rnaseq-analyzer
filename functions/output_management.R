@@ -9,7 +9,7 @@ library(glue)
 library(here)
 library(yaml)
 
-here::i_am("functions/rnaseq_output_management.R")
+here::i_am("functions/output_management.R")
 
 ensure_experiment_outputs <- function(experiment_name) {
   #' Create complete experiment output directory structure if missing
