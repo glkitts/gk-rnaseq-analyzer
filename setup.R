@@ -44,7 +44,8 @@ CRAN_PACKAGES <- c(
 BIOC_PACKAGES <- c(
   "DESeq2",         # Differential expression analysis
   "tximeta",        # Transcript quantification import
-  "ComplexHeatmap"  # Advanced heatmap generation
+  "ComplexHeatmap",  # Advanced heatmap generation
+  "fgsea"
 )
 
 OPTIONAL_PACKAGES <- c(

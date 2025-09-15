@@ -9,7 +9,8 @@ paths:
   salmon_base: shared_resources/rnaseq_counts
   annotation_db: shared_resources/annotations/vc_genome_anno.RDS
   annotation_subset: shared_resources/annotations/subset_anno.RDS
-  custom_genesets: shared_resources/annotations/yildizlab_genesets.xlsx
+  pathway_subsets: shared_resources/annotations/yildizlab_genesets.xlsx
+  genesets:
 reference:
   genome_assembly: "GCF_000006745.1"
   genome_accession: "NC_002505.1"

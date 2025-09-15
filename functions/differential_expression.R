@@ -73,7 +73,6 @@ merge_annotations <- function(res_df,
                               annotations,
                               relocate_cols = TRUE,
                               cols_to_relocate = NULL) {
-  
   # Get original row count for validation
   original_rows <- nrow(res_df)
   
@@ -99,18 +98,14 @@ merge_annotations <- function(res_df,
           contains(c("log2FoldChange", "log2FC")),
           contains("padj"),
           any_of(c(
-            "PsortB", 
-            "SignalP_5.0",
-            "Gene", 
-            "GeneNames", 
-            "Type"
+            "PsortB", "SignalP_5.0", "Gene", "GeneNames", "Type"
           )),
           starts_with("GO terms"),
           starts_with("yildiz_"),
           any_of(c("Begin", "End", "Length")),
           any_of("Transcription Units"),
           starts_with("TIGR"),
-          any_of(c("Locus_Tag_Old", "UniProtID")), 
+          any_of(c("Locus_Tag_Old", "UniProtID")),
           starts_with("nc_")
         )
     }
@@ -119,5 +114,29 @@ merge_annotations <- function(res_df,
   return(merged_res)
 }
 
-
-
+enrich_genesets <- function(res,
+                            genesets,
+                            geneset.type = "GObp",
+                            gene_col = Label,
+                            ranking_col = log2FoldChange) {
+  # Input validation
+  if (nrow(data) == 0) {
+    cli::cli_warn("No data provided for GSEA")
+    return(tibble())
+  }
+  
+  # Create gene rankings using {{ }} in case altered ranking
+  rankings_df <- res %>%
+    filter(!is.na({{ ranking_col }}), !is.na({{ gene_col }})) %>%
+    arrange(desc({{ ranking_col }})) %>%
+    distinct({{ gene_col }}, .keep_all = TRUE) %>%
+    select(gene = {{ gene_col }}, rank_value = {{ ranking_col }})
+  
+  ranked_genes <- rankings_df$rank_value %>% set_names(rankings_df$gene)
+  
+  gsea_results <- fgsea::fgsea(
+    pathways = genesets, 
+    stats = ranked_genes)
+  
+  return(gsea_results)
+}

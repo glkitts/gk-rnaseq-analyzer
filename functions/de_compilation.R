@@ -76,18 +76,18 @@ compile_significant_hits <- function(res.l.all) {
 }
 
 
-create_pathway_subsets <- function(sigHits_compiled, genesets) {
+create_pathway_subsets <- function(sigHits_compiled, pathway_subsets) {
   ## Just Label and log2FC to avoid join overlap
   d.trim <- sigHits_compiled %>%
     select(Label, contains("log2FC"))
   
   ## For each geneset, attach sigHits
-  d.sig.genesets <- genesets %>%
+  d.sig.pathway_subsets <- genesets %>%
     lapply(function(x) {
       x %>% left_join(d.trim)
     })
   
-  return(d.sig.genesets)
+  return(d.sig.pathway_subsets)
 }
 
 #' Create README/Info sheet for Excel DEcompilation
@@ -272,7 +272,7 @@ create_readme_sheet <- function(res.l.all,
 
 create_de_compilation <- function(res.l.all,
                                   annotations,
-                                  genesets = NULL,
+                                  pathway_subsets = NULL,
                                   comparison_types = c("DE", "all"),
                                   config = NULL,
                                   experiment_name = NULL,
@@ -311,13 +311,13 @@ create_de_compilation <- function(res.l.all,
   }
   
   # Add pathway subsets if provided
-  if (!is.null(genesets)) {
-    d.sig.genesets <- sigHits_compiled %>%
-      create_pathway_subsets(genesets)
+  if (!is.null(pathway_subsets)) {
+    d.sig.pathway_subsets <- sigHits_compiled %>%
+      create_pathway_subsets(pathway_subsets)
     
-    if (length(d.sig.genesets) > 0) {
+    if (length(d.sig.pathway_subsets) > 0) {
       excel.list <- excel.list %>%
-        append(d.sig.genesets)
+        append(d.sig.pathway_subsets)
     }
   }
   
