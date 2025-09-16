@@ -17,7 +17,7 @@ here::i_am("functions/de_compilation.R")
 
 
 # ============================================================================= #
-# CREATE COMPILATIONS ----
+# CREATE DE COMPILATIONS ----
 # ============================================================================= #
 
 #' Create compiled master table using full_join approach
@@ -82,7 +82,7 @@ create_pathway_subsets <- function(sigHits_compiled, pathway_subsets) {
     select(Label, contains("log2FC"))
   
   ## For each geneset, attach sigHits
-  d.sig.pathway_subsets <- genesets %>%
+  d.sig.pathway_subsets <- pathway_subsets %>%
     lapply(function(x) {
       x %>% left_join(d.trim)
     })

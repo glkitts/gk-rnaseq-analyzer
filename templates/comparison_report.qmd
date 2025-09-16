@@ -1,0 +1,407 @@
+---
+title: "Differential Expression: `r params$comparison_name`"
+subtitle: "Comparison Analysis"
+author: "Yildiz Lab RNA-seq Pipeline"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    theme: default
+    embed-resources: true
+    fig-width: 8
+    fig-height: 6
+    df-print: paged
+  pdf:
+    toc: true
+    geometry:
+      - top=0.7in
+      - right=0.7in
+      - bottom=0.7in
+      - left=0.7in
+    fig-width: 7
+    fig-height: 5
+params:
+  comparison_name: "template_comparison"
+  temp_comp_file: NULL
+  temp_exp_file: NULL
+  output_format: "html"
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(tidyverse)
+library(DT)
+library(knitr)
+library(scales)
+library(ggrepel)
+library(viridis)
+
+# Load plotly conditionally for HTML output
+if (params$output_format == "html") {
+  suppressPackageStartupMessages(library(plotly))
+}
+
+# Load data from temporary files
+if (!is.null(params$temp_comp_file) && file.exists(params$temp_comp_file)) {
+  comparison_data <- readRDS(params$temp_comp_file)
+} else {
+  stop("Comparison data file not found")
+}
+
+if (!is.null(params$temp_exp_file) && file.exists(params$temp_exp_file)) {
+  experiment_info <- readRDS(params$temp_exp_file)
+} else {
+  stop("Experiment info file not found")
+}
+
+# Extract data for convenience
+contrast <- comparison_data$contrast
+results <- comparison_data$results
+volcano_data <- comparison_data$volcano_data
+gsea_data <- comparison_data$gsea_data
+is_html <- params$output_format == "html"
+
+# Set figure dimensions based on format
+fig_width <- if (is_html) 8 else 7
+fig_height <- if (is_html) 6 else 5
+```
+
+## Comparison Overview
+
+**Comparison:** `r contrast[2]` vs `r contrast[3]` (factor: `r contrast[1]`)
+
+**Results Summary:**
+
+- **Total genes analyzed:** `r scales::comma(volcano_data$summary$total_genes)`
+- **Significantly different:** `r volcano_data$summary$sig_genes` (padj ≤ 0.05)
+- **Differentially expressed:** `r volcano_data$summary$de_genes` (padj ≤ 0.05 & |log2FC| ≥ 1)
+
+::: {.callout-note}
+**Interpretation:** A **positive log2 fold change** indicates expression is **higher in `r contrast[2]`** compared to `r contrast[3]`.
+:::
+
+## Volcano Plot
+
+```{r volcano-plot-static}
+#| fig-cap: "Volcano plot showing differential expression results"
+#| fig-width: !expr fig_width
+#| fig-height: !expr fig_height
+
+# Color scheme for significance categories
+color_scheme <- c(
+  "DE" = "#e31a1c",
+  "Significant" = "#1f78b4", 
+  "Not Significant" = "#a6a6a6"
+)
+
+# Base volcano plot
+volcano_base <- volcano_data$data %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj_plot))) +
+  geom_point(
+    aes(color = sig_category),
+    alpha = 0.6,
+    size = 1
+  ) +
+  scale_color_manual(
+    values = color_scheme,
+    name = "Significance"
+  ) +
+  scale_x_continuous(
+    limits = volcano_data$x_limits,
+    name = "log₂(Fold Change)"
+  ) +
+  scale_y_continuous(
+    limits = volcano_data$y_limits,
+    name = "-log₁₀(padj)"
+  ) +
+  geom_vline(xintercept = c(-1, 1), color = "black", alpha = 0.3, linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), color = "black", alpha = 0.3, linetype = "dashed") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    title = glue("Differential Expression: {contrast[2]} vs {contrast[3]}"),
+    subtitle = glue("{volcano_data$summary$de_genes} genes differentially expressed")
+  )
+
+print(volcano_base)
+```
+
+```{r volcano-plot-interactive, eval=is_html}
+#| fig-cap: "Interactive volcano plot (hover for gene details)"
+
+# Create interactive version for HTML if plotly is available
+if (requireNamespace("plotly", quietly = TRUE)) {
+  volcano_interactive <- volcano_data$data %>%
+    plot_ly(
+      x = ~log2FoldChange,
+      y = ~(-log10(padj_plot)),
+      color = ~sig_category,
+      colors = color_scheme,
+      text = ~paste(
+        "Gene:", Label,
+        "<br>log2FC:", round(log2FoldChange, 3),
+        "<br>padj:", scientific(padj, digits = 2),
+        if ("Product" %in% colnames(.)) paste("<br>Product:", Product) else ""
+      ),
+      hovertemplate = "%{text}<extra></extra>",
+      type = "scatter",
+      mode = "markers",
+      marker = list(size = 4, opacity = 0.7)
+    ) %>%
+    layout(
+      title = list(
+        text = glue("Interactive Volcano Plot: {contrast[2]} vs {contrast[3]}"),
+        font = list(size = 16)
+      ),
+      xaxis = list(
+        title = "log₂(Fold Change)",
+        range = volcano_data$x_limits,
+        showgrid = TRUE,
+        zeroline = TRUE
+      ),
+      yaxis = list(
+        title = "-log₁₀(padj)",
+        range = volcano_data$y_limits,
+        showgrid = TRUE
+      ),
+      legend = list(title = list(text = "Significance")),
+      hovermode = "closest"
+    ) %>%
+    add_vline(x = 1, line = list(color = "black", dash = "dash", width = 1), opacity = 0.3) %>%
+    add_vline(x = -1, line = list(color = "black", dash = "dash", width = 1), opacity = 0.3) %>%
+    add_hline(y = -log10(0.05), line = list(color = "black", dash = "dash", width = 1), opacity = 0.3)
+
+  volcano_interactive
+} else {
+  cat("**Interactive plot requires plotly package**\n")
+}
+```
+
+```{r volcano-plot-labeled}
+#| fig-cap: "Volcano plot with top genes labeled"
+#| fig-width: !expr fig_width
+#| fig-height: !expr (fig_height * 1.2)
+
+# Identify top genes to label
+top_genes <- volcano_data$data %>%
+  filter(sig_category == "DE") %>%
+  arrange(padj) %>%
+  slice_head(n = 20) %>%
+  bind_rows(
+    volcano_data$data %>%
+      filter(sig_category == "DE") %>%
+      arrange(desc(abs(log2FoldChange))) %>%
+      slice_head(n = 15)
+  ) %>%
+  distinct(Label, .keep_all = TRUE)
+
+# Add labels to volcano plot
+volcano_labeled <- volcano_base +
+  geom_text_repel(
+    data = top_genes,
+    aes(label = Label),
+    size = 2.5,
+    max.overlaps = 15,
+    force = 2,
+    seed = 42,
+    color = "black"
+  ) +
+  labs(
+    subtitle = glue("{volcano_data$summary$de_genes} genes differentially expressed (top genes labeled)")
+  )
+
+print(volcano_labeled)
+```
+
+## Gene Set Enrichment Analysis
+
+```{r gsea-results, eval=!is.null(gsea_data)}
+#| fig-cap: "Top enriched pathways (GSEA results)"
+
+if (!is.null(gsea_data) && nrow(gsea_data) > 0) {
+  
+  # Filter to significant pathways or top 10
+  gsea_filtered <- gsea_data %>%
+    filter(padj <= 0.05) %>%
+    arrange(padj) %>%
+    slice_head(n = 10)
+  
+  # If no significant pathways, show top 10 by NES
+  if (nrow(gsea_filtered) == 0) {
+    gsea_filtered <- gsea_data %>%
+      arrange(desc(abs(NES))) %>%
+      slice_head(n = 10)
+    
+    cat("**Note:** No significantly enriched pathways (padj ≤ 0.05). Showing top 10 by normalized enrichment score.\n\n")
+  }
+  
+  # Calculate dynamic figure height based on number of pathways
+  gsea_height <- max(4, min(8, nrow(gsea_filtered) * 0.4 + 2))
+  
+  # Create GSEA plot
+  gsea_plot <- gsea_filtered %>%
+    mutate(
+      pathway = str_trunc(pathway, 50),
+      pathway = fct_reorder(pathway, NES)
+    ) %>%
+    ggplot(aes(x = NES, y = pathway)) +
+    geom_col(
+      aes(fill = padj <= 0.05),
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c("TRUE" = "#e31a1c", "FALSE" = "#a6a6a6"),
+      labels = c("TRUE" = "Significant", "FALSE" = "Not significant"),
+      name = "padj ≤ 0.05"
+    ) +
+    labs(
+      x = "Normalized Enrichment Score (NES)",
+      y = "Pathway",
+      title = "Gene Set Enrichment Analysis",
+      subtitle = glue("Top {nrow(gsea_filtered)} pathways")
+    ) +
+    theme_bw() +
+    theme(
+      axis.text.y = element_text(size = 8),
+      legend.position = "bottom"
+    )
+  
+  print(gsea_plot)
+  
+} else {
+  cat("**GSEA results not available for this comparison.**\n")
+}
+```
+
+```{r gsea-table, eval=!is.null(gsea_data)}
+# Display GSEA results table
+if (!is.null(gsea_data) && nrow(gsea_data) > 0) {
+  
+  gsea_table <- gsea_data %>%
+    filter(padj <= 0.05) %>%
+    arrange(padj) %>%
+    select(pathway, NES, padj, size) %>%
+    mutate(
+      NES = round(NES, 3),
+      padj = scientific(padj, digits = 2)
+    ) %>%
+    rename(
+      "Pathway" = pathway,
+      "NES" = NES,
+      "Adjusted P-value" = padj,
+      "Pathway Size" = size
+    )
+  
+  if (nrow(gsea_table) > 0) {
+    if (is_html) {
+      DT::datatable(
+        gsea_table,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          dom = 'Bfrtip'
+        ),
+        caption = "Significantly enriched pathways (padj ≤ 0.05)"
+      )
+    } else {
+      kable(
+        gsea_table,
+        caption = "Significantly enriched pathways (padj ≤ 0.05)",
+        booktabs = TRUE
+      ) %>%
+      kableExtra::kable_styling(
+        latex_options = c("striped", "scale_down", "hold_position")
+      )
+    }
+  } else {
+    cat("**No significantly enriched pathways found (padj ≤ 0.05).**\n")
+  }
+}
+```
+
+## Top Differential Genes
+
+```{r top-genes-table}
+# Show top differentially expressed genes
+top_de_genes <- results$DE %>%
+  arrange(padj) %>%
+  slice_head(n = 20) %>%
+  select(
+    Label,
+    any_of(c("Product", "Gene", "GeneNames")),
+    log2FoldChange,
+    padj,
+    baseMean
+  ) %>%
+  mutate(
+    log2FoldChange = round(log2FoldChange, 3),
+    padj = scientific(padj, digits = 2),
+    baseMean = round(baseMean, 1)
+  )
+
+if (is_html) {
+  DT::datatable(
+    top_de_genes,
+    options = list(
+      pageLength = 15,
+      scrollX = TRUE,
+      dom = 'Bfrtip'
+    ),
+    caption = "Top 20 differentially expressed genes (ranked by padj)"
+  )
+} else {
+  kable(
+    top_de_genes,
+    caption = "Top 20 differentially expressed genes (ranked by padj)",
+    booktabs = TRUE
+  ) %>%
+  kableExtra::kable_styling(
+    latex_options = c("striped", "scale_down", "hold_position")
+  )
+}
+```
+
+## Summary Statistics
+
+```{r summary-stats}
+# Calculate additional summary statistics
+summary_stats <- tibble(
+  Metric = c(
+    "Total genes analyzed",
+    "Genes with padj ≤ 0.05",
+    "Upregulated genes (log2FC > 1, padj ≤ 0.05)",
+    "Downregulated genes (log2FC < -1, padj ≤ 0.05)",
+    "Maximum |log2FC|",
+    "Minimum significant padj"
+  ),
+  Value = c(
+    scales::comma(nrow(results$all)),
+    nrow(results$sig),
+    nrow(filter(results$DE, log2FoldChange > 1)),
+    nrow(filter(results$DE, log2FoldChange < -1)),
+    round(max(abs(results$all$log2FoldChange), na.rm = TRUE), 2),
+    if (nrow(results$sig) > 0) scales::scientific(min(results$sig$padj), digits = 2) else "None"
+  )
+)
+
+kable(
+  summary_stats,
+  caption = "Differential expression summary statistics",
+  booktabs = TRUE
+) %>%
+kableExtra::kable_styling(
+  latex_options = c("hold_position")
+)
+```
+
+```{r back-link, results='asis', eval=is_html}
+cat("\n\n---\n\n")
+cat("[← Back to Experimental Summary](", gsub("_report\\.html$", "_summary.html", basename(knitr::current_input())), ")", sep = "")
+```

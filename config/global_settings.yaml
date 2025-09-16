@@ -10,7 +10,7 @@ paths:
   annotation_db: shared_resources/annotations/vc_genome_anno.RDS
   annotation_subset: shared_resources/annotations/subset_anno.RDS
   pathway_subsets: shared_resources/annotations/yildizlab_genesets.xlsx
-  genesets:
+  genesets: shared_resources/annotations/vc_genesets.GO.RDS
 reference:
   genome_assembly: "GCF_000006745.1"
   genome_accession: "NC_002505.1"
@@ -21,6 +21,9 @@ analysis:
   log2FC_threshold: 1.0
   min_counts: 2.0
   lfcShrinkage_method: "ashr"
+  gsea_min_pathway_size: 2
+  gsea_max_pathway_size: NULL
+  generate_gsea: true  # Easy way to turn on/off
 plotting:
   base_size: 8.0
   figure_width: 7.0

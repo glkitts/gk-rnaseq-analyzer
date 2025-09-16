@@ -470,7 +470,7 @@ save_de_compilation_excel <- function(de_compilation,
     experiment_name = experiment_name
   )
   
-  return(file_path)
+  return(de_compilation[[1]])
 }
 
 
