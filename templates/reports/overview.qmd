@@ -20,7 +20,7 @@ suppressPackageStartupMessages({
 })
 
 # Load report data
-report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_report_data.RDS")))
+report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))
 
 # Extract key components
 metadata <- report_data$metadata

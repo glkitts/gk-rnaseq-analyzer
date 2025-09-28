@@ -378,32 +378,3 @@ create_gsea_excel_compilation <- function(gsea_results,
   return(file_path)
 }
 
-#' Save GSEA Excel file using existing formatting infrastructure
-#'
-#' Wrapper around save_excel_enhanced for GSEA-specific files.
-#' Reuses the Excel formatting system from DE compilation output.
-#' Saves files in outputs/results/ directory.
-#'
-#' @param excel_compilation Named list of data frames
-#' @param experiment_name String, experiment identifier
-#' @param filename String, output filename
-#'
-#' @return String path to created file
-save_gsea_excel_file <- function(excel_compilation, experiment_name, filename) {
-  
-  # Create output directory in results subfolder
-  output_dir <- ensure_experiment_outputs(experiment_name)
-  
-  file_path <- file.path(output_dir, "results", filename)
-  
-  # Use existing Excel formatting function
-  save_excel_enhanced(
-    data_list = excel_compilation,
-    file_path = file_path,
-    experiment_name = experiment_name,
-    freeze_panes = TRUE,
-    add_filters = TRUE
-  )
-  
-  return(file_path)
-}

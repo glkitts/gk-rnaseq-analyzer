@@ -106,7 +106,7 @@ filter_low_counts <- function(dds, min_counts = 2) {
 #'
 #' @return DESeqDataSet object
 load_dds <- function(experiment_name) {
-  dds_path <- here("experiments", experiment_name, "outputs", paste0(experiment_name, ".dds.RDS"))
+  dds_path <- here("experiments", experiment_name, "outputs", "technical", "R", paste0(experiment_name, ".dds.RDS"))
   
   if (!file.exists(dds_path)) {
     stop(glue("DDS not found. Run: Rscript run_experiment.R {experiment_name} --dds-only"))
@@ -141,7 +141,7 @@ save_dds_with_metadata <- function(dds,
   
   # Create output directories and file paths
   outputs_dir <- ensure_experiment_outputs(experiment_name)
-  dds_path <- file.path(outputs_dir, "R", paste0(experiment_name, ".dds.RDS"))
+  dds_path <- file.path(outputs_dir, "technical", "R", paste0(experiment_name, ".dds.RDS"))
   metadata_path <- file.path(outputs_dir, "technical/metadata", paste0(experiment_name, ".metadata.yaml"))
   coldata_path <- file.path(outputs_dir, "technical/metadata", paste0(experiment_name, ".coldata.csv"))
   

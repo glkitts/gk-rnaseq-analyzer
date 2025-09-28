@@ -109,12 +109,12 @@ check_experiment_outputs <- function(experiment_name, pipeline_step) {
 
   result <- switch(as.character(pipeline_step),
     "dds-only" = {
-      dds_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, "_dds.RDS"))
+      dds_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, ".dds.RDS"))
       file.exists(dds_file)
     },
     "analysis-only" = {
       # Check for both the report data file and the Excel compilation
-      report_data_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, "_report_data.RDS"))
+      report_data_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, "_data.RDS"))
       excel_file <- file.path(experiment_dir, paste0(experiment_name, "_DEcompilation.xlsx"))
       file.exists(report_data_file) && file.exists(excel_file)
     },

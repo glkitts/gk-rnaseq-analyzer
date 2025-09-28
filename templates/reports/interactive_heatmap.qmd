@@ -22,7 +22,7 @@ suppressPackageStartupMessages({
 })
 
 # Load report data
-report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_report_data.RDS")))
+report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))
 
 # Extract key components
 dds <- report_data$dds
@@ -49,17 +49,71 @@ if (length(annotation_factors) == 0) {
 vsd <- vst(dds, blind = FALSE)
 expr_matrix <- assay(vsd)
 
-# Filter out genes with very low variance to reduce size
-gene_vars <- rowVars(expr_matrix)
-# Keep genes with variance above the 25th percentile
-var_threshold <- quantile(gene_vars, 0.25)
-keep_genes <- gene_vars > var_threshold
+# Intelligent gene selection for meaningful heatmap
+genes_to_include <- character(0)
 
-expr_matrix_filtered <- expr_matrix[keep_genes, ]
+# 1. Get top differentially expressed genes across all comparisons
+if (exists("res.l.all") && length(res.l.all) > 0) {
+  all_de_genes <- res.l.all %>%
+    map(~ .x$DE) %>%
+    map(~ if(nrow(.x) > 0) .x$Label else character(0)) %>%
+    unlist() %>%
+    unique()
+
+  # Take top 200 most significant DE genes
+  top_de_genes <- res.l.all %>%
+    map(~ .x$sig) %>%
+    bind_rows() %>%
+    arrange(padj) %>%
+    head(200) %>%
+    pull(Label) %>%
+    unique()
+
+  genes_to_include <- c(genes_to_include, top_de_genes)
+  cat("Added", length(top_de_genes), "top DE genes\n")
+}
+
+# 2. Add genes from Yildiz lab pathways if available
+if (exists("metadata") && "annotation_file" %in% names(metadata)) {
+  # Try to get yildiz pathway genes from the data
+  if (exists("res.l.all") && length(res.l.all) > 0) {
+    yildiz_genes <- res.l.all[[1]]$all %>%
+      filter(!is.na(yildiz_pathway)) %>%
+      filter(yildiz_pathway != "") %>%
+      head(100) %>%  # Limit to avoid too many
+      pull(Label) %>%
+      unique()
+
+    genes_to_include <- c(genes_to_include, yildiz_genes)
+    cat("Added", length(yildiz_genes), "Yildiz pathway genes\n")
+  }
+}
+
+# 3. Add top variable genes as backup
+gene_vars <- rowVars(expr_matrix)
+top_var_genes <- names(sort(gene_vars, decreasing = TRUE))[1:300]
+genes_to_include <- c(genes_to_include, top_var_genes)
+
+# Remove duplicates and filter to genes that exist in the matrix
+genes_to_include <- unique(genes_to_include)
+genes_to_include <- genes_to_include[genes_to_include %in% rownames(expr_matrix)]
+
+# Cap at 800 genes maximum for performance
+if (length(genes_to_include) > 800) {
+  genes_to_include <- genes_to_include[1:800]
+}
+
+# If still too few genes, add more variable genes
+if (length(genes_to_include) < 200) {
+  additional_genes <- setdiff(top_var_genes[1:400], genes_to_include)
+  genes_to_include <- c(genes_to_include, additional_genes[1:(200 - length(genes_to_include))])
+}
+
+expr_matrix_filtered <- expr_matrix[genes_to_include, ]
 
 cat("Total genes:", nrow(expr_matrix), "\n")
-cat("Genes after filtering:", nrow(expr_matrix_filtered), "\n")
-cat("Genes removed (low variance):", nrow(expr_matrix) - nrow(expr_matrix_filtered), "\n")
+cat("Genes selected for heatmap:", nrow(expr_matrix_filtered), "\n")
+cat("Selection includes: DE genes, Yildiz pathway genes, and high-variance genes\n")
 
 # Prepare annotation data
 annotation_data <- coldata %>%
@@ -73,10 +127,13 @@ annotation_data[] <- lapply(annotation_data, as.character)
 ## Interactive Gene Expression Heatmap
 
 **Experiment:** `r params$experiment_name`
-**Genes displayed:** `r format(nrow(expr_matrix_filtered), big.mark = ",")` (filtered from `r format(nrow(expr_matrix), big.mark = ",")` total)
+**Genes displayed:** `r format(nrow(expr_matrix_filtered), big.mark = ",")` (intelligently selected from `r format(nrow(expr_matrix), big.mark = ",")` total)
 **Samples:** `r metadata$n_samples`
 
-This interactive heatmap shows variance-stabilized gene expression across all samples. Genes with very low variance have been filtered out to improve performance.
+This interactive heatmap shows variance-stabilized gene expression across all samples. Genes are intelligently selected to include:
+- Top differentially expressed genes across all comparisons
+- Genes from Yildiz lab pathway annotations
+- High-variance genes for additional biological insight
 
 ### Features:
 - **Zoom:** Click and drag to zoom into regions
@@ -115,7 +172,11 @@ heatmaply(
 - **Normalization:** Variance Stabilizing Transformation (VST)
 - **Scaling:** Row-wise (per gene) z-scoring
 - **Clustering:** Complete linkage hierarchical clustering
-- **Filtering:** Genes with variance below 25th percentile removed
+- **Gene Selection:** Intelligent filtering combining:
+  - Top 200 most significant DE genes
+  - Yildiz lab pathway genes
+  - Top 300 high-variance genes
+  - Maximum 800 genes for optimal performance
 
 ---
 

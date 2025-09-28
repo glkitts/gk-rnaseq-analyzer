@@ -40,7 +40,7 @@ suppressPackageStartupMessages({
 source(here("templates", "reports", "assets", "report_functions.R"))
 
 # Load report data
-report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_report_data.RDS")))
+report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))
 
 # Extract key components
 dds <- report_data$dds
@@ -53,8 +53,12 @@ config <- report_data$config_snapshot
 
 # Get results for this comparison
 comp_results <- res.l.all[[params$comparison_name]]
-res_all <- comp_results$res.all
-res_sig <- comp_results$res.sig
+if (is.null(comp_results)) {
+  stop("Comparison '", params$comparison_name, "' not found in results. Available: ",
+       paste(names(res.l.all), collapse = ", "))
+}
+res_all <- comp_results$all
+res_sig <- comp_results$sig
 
 # Set global knitr options for publication quality
 knitr::opts_chunk$set(
@@ -70,10 +74,12 @@ knitr::opts_chunk$set(
 ```{r comparison-analysis, include=FALSE}
 # Find the contrast definition for this comparison
 comparison_contrast <- NULL
-for (i in seq_along(contrast_list)) {
-  if (names(contrast_list)[i] == params$comparison_name) {
-    comparison_contrast <- contrast_list[[i]]
-    break
+if (!is.null(names(contrast_list))) {
+  for (i in seq_along(contrast_list)) {
+    if (names(contrast_list)[i] == params$comparison_name) {
+      comparison_contrast <- contrast_list[[i]]
+      break
+    }
   }
 }
 

@@ -12,7 +12,6 @@ format:
 params:
   experiment_name: "experiment_name"
   data_dir: "path/to/data"
-  comparison_names: []
 ---
 
 ```{r setup, include=FALSE}
@@ -30,7 +29,7 @@ suppressPackageStartupMessages({
 })
 
 # Load report data
-report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_report_data.RDS")))
+report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))
 
 # Extract key components
 dds <- report_data$dds
@@ -38,6 +37,9 @@ res.l.all <- report_data$res.l.all
 coldata <- report_data$coldata
 metadata <- report_data$metadata
 config <- report_data$config_snapshot
+
+# Get comparison names from the data
+comparison_names <- names(res.l.all)
 
 # Set up plotting theme
 theme_set(theme_bw(base_size = 10) +
@@ -84,8 +86,8 @@ cat("Annotation factors:", paste(annotation_factors, collapse = ", "), "\n")
 ```{r sample-info, echo=FALSE}
 # Create sample information table
 sample_info <- coldata %>%
-  as_tibble(rownames = "sample") %>%
-  select(sample, everything())
+  as_tibble(rownames = "sample_id") %>%
+  select(sample_id, everything())
 
 DT::datatable(
   sample_info,
@@ -110,7 +112,7 @@ lib_size_df <- tibble(
   sample = names(lib_sizes),
   library_size = lib_sizes
 ) %>%
-  left_join(as_tibble(coldata, rownames = "sample"), by = "sample")
+  left_join(as_tibble(coldata, rownames = "sample_id"), by = c("sample" = "sample_id"))
 
 # Use primary factor for coloring if available
 if (primary_factor %in% colnames(lib_size_df)) {
@@ -227,7 +229,7 @@ if (ncol(annotation_df) > 0) {
     show_column_names = TRUE,
     column_title = "Sample-to-Sample Distances",
     clustering_distance_rows = sample_dists,
-    clustering_distance_cols = sample_dists
+    clustering_distance_columns = sample_dists
   )
 } else {
   # Fallback without annotation
@@ -238,7 +240,7 @@ if (ncol(annotation_df) > 0) {
     show_column_names = TRUE,
     column_title = "Sample-to-Sample Distances",
     clustering_distance_rows = sample_dists,
-    clustering_distance_cols = sample_dists
+    clustering_distance_columns = sample_dists
   )
 }
 
@@ -252,8 +254,8 @@ draw(ht)
 ```{r de-summary, echo=FALSE}
 # Create summary table of all comparisons
 de_summary <- map_dfr(names(res.l.all), function(comp_name) {
-  res_all <- res.l.all[[comp_name]]$res.all
-  res_sig <- res.l.all[[comp_name]]$res.sig
+  res_all <- res.l.all[[comp_name]]$all  # Changed from res.all to all
+  res_sig <- res.l.all[[comp_name]]$sig  # Changed from res.sig to sig
 
   tibble(
     comparison = comp_name,
@@ -345,7 +347,7 @@ clean_comparison_name <- function(comparison_name) {
     str_remove("^_+|_+$")
 }
 
-comparison_links <- map_chr(metadata$comparison_names, function(comp) {
+comparison_links <- map_chr(comparison_names, function(comp) {
   clean_name <- clean_comparison_name(comp)
   glue::glue("- [{comp}]({params$experiment_name}_{clean_name}_DE.html)")
 })

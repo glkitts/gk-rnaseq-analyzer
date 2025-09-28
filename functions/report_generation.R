@@ -92,7 +92,7 @@ save_report_data <- function(experiment_name, report_data) {
 
   # Determine output path following new directory structure
   output_dir <- here("experiments", experiment_name, "outputs", "technical", "R")
-  output_file <- file.path(output_dir, paste0(experiment_name, "_report_data.RDS"))
+  output_file <- file.path(output_dir, paste0(experiment_name, "_data.RDS"))
 
   report_data %>%
     write_rds(output_file)
@@ -105,7 +105,7 @@ save_report_data <- function(experiment_name, report_data) {
 load_report_data <- function(experiment_name) {
 
   input_file <- here("experiments", experiment_name, "outputs", "technical", "R",
-                    paste0(experiment_name, "_report_data.RDS"))
+                    paste0(experiment_name, "_data.RDS"))
 
   if (!file.exists(input_file)) {
     cli_abort("Report data not found: {input_file}")
@@ -201,8 +201,7 @@ generate_experiment_summary_report <- function(experiment_name, report_data, out
         output_format = .x,
         params = list(
           experiment_name = experiment_name,
-          data_dir = normalizePath(data_dir),
-          comparison_names = names(report_data$res.l.all)
+          data_dir = normalizePath(data_dir)
         )
       )
 

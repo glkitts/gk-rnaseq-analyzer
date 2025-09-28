@@ -76,7 +76,7 @@ save_individual_csvs <- function(res.l,
   if (is.null(output_dir)) {
     output_dir <- here("experiments",
                        experiment_name,
-                       "outputs/results/individual_comparisons/")
+                       "outputs/data_tables/individual_comparisons/")
   }
   
   filtered_res.l <- res.l[names(res.l) %in% types]
@@ -105,7 +105,7 @@ save_master_table <- function(allHits_compiled,
   
   if (save_rds == T) {
     if (is.null(output_dir_rds)) {
-      output_dir <- here("experiments", experiment_name, "outputs/R/")
+      output_dir <- here("experiments", experiment_name, "outputs/technical/R/")
     }
     output_name <- paste0(output_dir, experiment_name, ".masterTable.RDS")
     allHits_compiled %>%
@@ -116,7 +116,7 @@ save_master_table <- function(allHits_compiled,
   
   if (save_csv == T) {
     if (is.null(output_dir_csv)) {
-      output_dir <- here("experiments", experiment_name, "outputs/results/")
+      output_dir <- here("experiments", experiment_name, "outputs/data_tables/")
     }
     output_name <- paste0(output_dir, experiment_name, ".masterTable.csv")
     allHits_compiled %>%
@@ -475,6 +475,36 @@ save_de_compilation_excel <- function(de_compilation,
   )
   
   return(de_compilation[[1]])
+}
+
+#' Save GSEA Excel file using existing formatting infrastructure
+#'
+#' Wrapper around save_excel_enhanced for GSEA-specific files.
+#' Reuses the Excel formatting system from DE compilation output.
+#' Saves files in outputs/data_tables/ directory.
+#'
+#' @param excel_compilation Named list of data frames
+#' @param experiment_name String, experiment identifier
+#' @param filename String, output filename
+#'
+#' @return String path to created file
+save_gsea_excel_file <- function(excel_compilation, experiment_name, filename) {
+
+  # Create output directory in data_tables subfolder
+  output_dir <- ensure_experiment_outputs(experiment_name)
+
+  file_path <- file.path(output_dir, "data_tables", filename)
+
+  # Use existing Excel formatting function
+  save_excel_enhanced(
+    data_list = excel_compilation,
+    file_path = file_path,
+    experiment_name = experiment_name,
+    freeze_panes = TRUE,
+    add_filters = TRUE
+  )
+
+  return(file_path)
 }
 
 
