@@ -109,16 +109,23 @@ check_experiment_outputs <- function(experiment_name, pipeline_step) {
 
   result <- switch(as.character(pipeline_step),
     "dds-only" = {
-      dds_file <- file.path(experiment_dir, paste0(experiment_name, "_dds.RDS"))
+      dds_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, "_dds.RDS"))
       file.exists(dds_file)
     },
     "analysis-only" = {
-      results_file <- file.path(experiment_dir, "results", paste0(experiment_name, "_results.RDS"))
-      file.exists(results_file)
+      # Check for both the report data file and the Excel compilation
+      report_data_file <- file.path(experiment_dir, "technical", "R", paste0(experiment_name, "_report_data.RDS"))
+      excel_file <- file.path(experiment_dir, paste0(experiment_name, "_DEcompilation.xlsx"))
+      file.exists(report_data_file) && file.exists(excel_file)
     },
     "reports-only" = {
-      reports_dir <- file.path(experiment_dir, "reports")
-      dir.exists(reports_dir) && length(list.files(reports_dir, pattern = "\\.(pdf|html)$")) > 0
+      # Check for overview.html and at least one report in reports/html/
+      overview_file <- file.path(experiment_dir, "overview.html")
+      reports_html_dir <- file.path(experiment_dir, "reports", "html")
+      overview_exists <- file.exists(overview_file)
+      html_reports_exist <- dir.exists(reports_html_dir) &&
+                           length(list.files(reports_html_dir, pattern = "\\.html$")) > 0
+      overview_exists && html_reports_exist
     },
     "full" = {
       check_experiment_outputs(experiment_name, "dds-only") &&

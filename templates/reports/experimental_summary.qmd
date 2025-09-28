@@ -1,0 +1,361 @@
+---
+title: "`r params$experiment_name` - Experimental Summary"
+format:
+  html:
+    theme: default
+    toc: true
+    embed-resources: true
+    css: assets/styles.css
+  pdf:
+    toc: true
+    number-sections: true
+params:
+  experiment_name: "experiment_name"
+  data_dir: "path/to/data"
+  comparison_names: []
+---
+
+```{r setup, include=FALSE}
+# Load required libraries
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(DESeq2)
+  library(ggplot2)
+  library(knitr)
+  library(DT)
+  library(here)
+  library(plotly)
+  library(ComplexHeatmap)
+  library(circlize)
+})
+
+# Load report data
+report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_report_data.RDS")))
+
+# Extract key components
+dds <- report_data$dds
+res.l.all <- report_data$res.l.all
+coldata <- report_data$coldata
+metadata <- report_data$metadata
+config <- report_data$config_snapshot
+
+# Set up plotting theme
+theme_set(theme_bw(base_size = 10) +
+  theme(
+    plot.title = element_text(size = 12, face = "bold"),
+    strip.background = element_rect(fill = "white", color = "black"),
+    panel.grid.minor = element_blank()
+  ))
+```
+
+```{r design-analysis, include=FALSE}
+# Analyze the design to determine what factors to use for visualization
+design_factors <- all.vars(design(dds))
+design_factors <- design_factors[design_factors != "1"]  # Remove intercept
+
+# Determine primary grouping variable (first non-intercept term usually)
+primary_factor <- design_factors[1]
+
+# Get all factors present in coldata for annotation
+available_factors <- colnames(coldata)
+annotation_factors <- intersect(design_factors, available_factors)
+
+# If no design factors in coldata, fall back to all coldata columns
+if (length(annotation_factors) == 0) {
+  annotation_factors <- available_factors
+}
+
+cat("Design factors detected:", paste(design_factors, collapse = ", "), "\n")
+cat("Primary factor for PCA:", primary_factor, "\n")
+cat("Annotation factors:", paste(annotation_factors, collapse = ", "), "\n")
+```
+
+## Experiment Overview
+
+**Experiment:** `r params$experiment_name`
+**Analysis Date:** `r metadata$analysis_date`
+**Design Formula:** `r metadata$design_formula`
+**Samples:** `r metadata$n_samples`
+**Genes Tested:** `r format(metadata$n_genes, big.mark = ",")`
+**Comparisons:** `r metadata$n_comparisons`
+
+## Sample Information
+
+```{r sample-info, echo=FALSE}
+# Create sample information table
+sample_info <- coldata %>%
+  as_tibble(rownames = "sample") %>%
+  select(sample, everything())
+
+DT::datatable(
+  sample_info,
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    dom = 'Bfrtip'
+  ),
+  caption = "Sample metadata and experimental conditions"
+)
+```
+
+## Quality Control
+
+### Library Size Distribution
+
+```{r library-size, echo=FALSE, fig.width=8, fig.height=5}
+# Calculate library sizes
+lib_sizes <- colSums(counts(dds))
+
+lib_size_df <- tibble(
+  sample = names(lib_sizes),
+  library_size = lib_sizes
+) %>%
+  left_join(as_tibble(coldata, rownames = "sample"), by = "sample")
+
+# Use primary factor for coloring if available
+if (primary_factor %in% colnames(lib_size_df)) {
+  p_lib <- ggplot(lib_size_df, aes(x = reorder(sample, library_size), y = library_size/1e6)) +
+    geom_col(aes_string(fill = primary_factor), alpha = 0.8) +
+    coord_flip() +
+    labs(
+      title = "Library Size Distribution",
+      x = "Sample",
+      y = "Library Size (millions of reads)",
+      fill = str_to_title(primary_factor)
+    ) +
+    theme(legend.position = "bottom")
+} else {
+  p_lib <- ggplot(lib_size_df, aes(x = reorder(sample, library_size), y = library_size/1e6)) +
+    geom_col(alpha = 0.8, fill = "steelblue") +
+    coord_flip() +
+    labs(
+      title = "Library Size Distribution",
+      x = "Sample",
+      y = "Library Size (millions of reads)"
+    )
+}
+
+print(p_lib)
+```
+
+### Principal Component Analysis
+
+```{r pca-analysis, echo=FALSE, fig.width=8, fig.height=6}
+# Perform PCA on variance stabilized data
+vsd <- vst(dds, blind = FALSE)
+
+# Use primary factor for PCA grouping, fall back to first available factor
+pca_grouping <- if (primary_factor %in% colnames(colData(dds))) {
+  primary_factor
+} else if (length(annotation_factors) > 0) {
+  annotation_factors[1]
+} else {
+  NULL
+}
+
+if (!is.null(pca_grouping)) {
+  pca_data <- plotPCA(vsd, intgroup = pca_grouping, returnData = TRUE)
+  percent_var <- round(100 * attr(pca_data, "percentVar"))
+
+  p_pca <- ggplot(pca_data, aes(x = PC1, y = PC2)) +
+    geom_point(aes_string(color = pca_grouping), size = 3, alpha = 0.8) +
+    geom_text(aes(label = name), vjust = -0.5, size = 3) +
+    labs(
+      title = "Principal Component Analysis",
+      x = paste0("PC1: ", percent_var[1], "% variance"),
+      y = paste0("PC2: ", percent_var[2], "% variance"),
+      color = str_to_title(pca_grouping)
+    ) +
+    theme(legend.position = "bottom")
+} else {
+  # Fallback PCA without grouping
+  pca_data <- plotPCA(vsd, returnData = TRUE)
+  percent_var <- round(100 * attr(pca_data, "percentVar"))
+
+  p_pca <- ggplot(pca_data, aes(x = PC1, y = PC2)) +
+    geom_point(size = 3, alpha = 0.8, color = "steelblue") +
+    geom_text(aes(label = name), vjust = -0.5, size = 3) +
+    labs(
+      title = "Principal Component Analysis",
+      x = paste0("PC1: ", percent_var[1], "% variance"),
+      y = paste0("PC2: ", percent_var[2], "% variance")
+    )
+}
+
+print(p_pca)
+```
+
+### Sample Distance Heatmap
+
+```{r sample-distances, echo=FALSE, fig.width=8, fig.height=6}
+# Calculate sample distances
+sample_dists <- dist(t(assay(vsd)))
+sample_dist_matrix <- as.matrix(sample_dists)
+rownames(sample_dist_matrix) <- colnames(sample_dist_matrix) <- colnames(vsd)
+
+# Create annotation for heatmap using available factors
+annotation_df <- coldata %>%
+  as.data.frame() %>%
+  select(all_of(annotation_factors))
+
+# Create color schemes for annotation
+if (ncol(annotation_df) > 0) {
+  annotation_colors <- list()
+  for (factor in annotation_factors) {
+    unique_vals <- unique(annotation_df[[factor]])
+    if (is.factor(annotation_df[[factor]]) || is.character(annotation_df[[factor]])) {
+      # Discrete colors
+      colors <- rainbow(length(unique_vals))
+      names(colors) <- unique_vals
+      annotation_colors[[factor]] <- colors
+    }
+  }
+
+  # Create ComplexHeatmap annotation
+  top_annotation <- HeatmapAnnotation(
+    df = annotation_df,
+    col = annotation_colors,
+    show_annotation_name = TRUE
+  )
+
+  # Create heatmap
+  ht <- Heatmap(
+    sample_dist_matrix,
+    name = "Distance",
+    top_annotation = top_annotation,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    column_title = "Sample-to-Sample Distances",
+    clustering_distance_rows = sample_dists,
+    clustering_distance_cols = sample_dists
+  )
+} else {
+  # Fallback without annotation
+  ht <- Heatmap(
+    sample_dist_matrix,
+    name = "Distance",
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    column_title = "Sample-to-Sample Distances",
+    clustering_distance_rows = sample_dists,
+    clustering_distance_cols = sample_dists
+  )
+}
+
+draw(ht)
+```
+
+## Differential Expression Summary
+
+### Overview of All Comparisons
+
+```{r de-summary, echo=FALSE}
+# Create summary table of all comparisons
+de_summary <- map_dfr(names(res.l.all), function(comp_name) {
+  res_all <- res.l.all[[comp_name]]$res.all
+  res_sig <- res.l.all[[comp_name]]$res.sig
+
+  tibble(
+    comparison = comp_name,
+    genes_tested = nrow(res_all),
+    significant_genes = nrow(res_sig),
+    upregulated = sum(res_sig$log2FoldChange > 0, na.rm = TRUE),
+    downregulated = sum(res_sig$log2FoldChange < 0, na.rm = TRUE),
+    percent_significant = round(100 * nrow(res_sig) / nrow(res_all), 1)
+  )
+})
+
+de_summary %>%
+  rename(
+    "Comparison" = comparison,
+    "Genes Tested" = genes_tested,
+    "Significant" = significant_genes,
+    "Upregulated" = upregulated,
+    "Downregulated" = downregulated,
+    "% Significant" = percent_significant
+  ) %>%
+  knitr::kable(
+    format = "html",
+    table.attr = 'class="table table-striped"',
+    caption = "Summary of differential expression results across all comparisons"
+  )
+```
+
+### Top Variable Genes Heatmap
+
+```{r top-genes-heatmap, echo=FALSE, fig.width=10, fig.height=8}
+# Select top variable genes
+top_var_genes <- head(order(rowVars(assay(vsd)), decreasing = TRUE), 50)
+mat <- assay(vsd)[top_var_genes, ]
+mat <- mat - rowMeans(mat)
+
+# Create annotation using available factors
+if (ncol(annotation_df) > 0) {
+  top_annotation <- HeatmapAnnotation(
+    df = annotation_df,
+    col = annotation_colors,
+    show_annotation_name = TRUE
+  )
+
+  ht_genes <- Heatmap(
+    mat,
+    name = "Z-score",
+    top_annotation = top_annotation,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    column_title = "Top 50 Most Variable Genes",
+    row_names_gp = gpar(fontsize = 8),
+    column_names_gp = gpar(fontsize = 8),
+    cluster_rows = TRUE,
+    cluster_columns = TRUE
+  )
+} else {
+  ht_genes <- Heatmap(
+    mat,
+    name = "Z-score",
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    column_title = "Top 50 Most Variable Genes",
+    row_names_gp = gpar(fontsize = 8),
+    column_names_gp = gpar(fontsize = 8),
+    cluster_rows = TRUE,
+    cluster_columns = TRUE
+  )
+}
+
+draw(ht_genes)
+```
+
+## Interactive Visualizations
+
+### Full Gene Expression Heatmap
+For exploring all genes across all samples with interactive zooming and filtering:
+
+[**🔗 Interactive Gene Expression Heatmap**](`r params$experiment_name`_interactive_heatmap.html)
+
+*Note: This interactive heatmap includes all ~`r format(nrow(vsd), big.mark = ",")`+ genes and may take a moment to load.*
+
+## Individual Comparison Links
+
+```{r comparison-nav, results='asis', echo=FALSE}
+clean_comparison_name <- function(comparison_name) {
+  comparison_name %>%
+    str_replace_all("[^a-zA-Z0-9_-]", "_") %>%
+    str_replace_all("_{2,}", "_") %>%
+    str_remove("^_+|_+$")
+}
+
+comparison_links <- map_chr(metadata$comparison_names, function(comp) {
+  clean_name <- clean_comparison_name(comp)
+  glue::glue("- [{comp}]({params$experiment_name}_{clean_name}_DE.html)")
+})
+
+cat("### Detailed Reports\n\n")
+cat(paste(comparison_links, collapse = "\n"))
+```
+
+---
+
+[← Back to Overview](../../overview.html)
+
+*Generated by RNA-seq Enhanced Analysis Pipeline on `r Sys.Date()`*

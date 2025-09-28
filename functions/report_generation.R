@@ -1,398 +1,554 @@
 #!/usr/bin/env Rscript
 
 # Report generation functions for RNA-seq analysis pipeline
-# Creation date: 2025-09-15
+# Creation date: 2025-09-27
+# Following gk_functions.R tidyverse style and report_generation_design.md specification
 
-library(tidyverse)
-library(DESeq2)
-library(here)
-library(yaml)
-library(glue)
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(DESeq2)
+  library(here)
+  library(yaml)
+  library(glue)
+  library(cli)
+})
 
 here::i_am("functions/report_generation.R")
 
+# Source output management functions for ensure_experiment_outputs
+source(here("functions/output_management.R"))
+
 # ============================================================================= #
-# REPORT DATA PREPARATION ----
+# CORE REPORT GENERATION FUNCTIONS ----
 # ============================================================================= #
 
-#' Prepare comprehensive data package for report generation
+#' Compile comprehensive report data from analysis results
 #'
-#' Creates a structured list containing all data needed for both experimental
-#' summary and individual comparison reports. This approach allows reports to
-#' be extended later without changing the pipeline.
+#' Creates single RDS file containing all data needed for report generation
+#' Following the single-file approach from design specification
 #'
-#' @param res.l.all Named list of comparison results from main workflow
-#' @param dds DESeqDataSet object 
-#' @param coldata Sample metadata
+#' @param dds DESeqDataSet object with normalized counts
+#' @param res.l.all Named list of comparison results
 #' @param contrast_list List of contrasts used in analysis
-#' @param config Global configuration
-#' @param annotations Gene annotations (optional)
+#' @param coldata Sample metadata
+#' @param config Global configuration from analysis
 #' @param gsea_results GSEA results if available (optional)
 #'
 #' @return List with organized data for report templates
-prepare_report_data <- function(res.l.all, 
-                                dds, 
-                                coldata, 
-                                contrast_list,
-                                config = NULL,
-                                annotations = NULL,
-                                gsea_results = NULL) {
-  
-  # Basic experiment metadata
-  experiment_metadata <- list(
+compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config, gsea_results = NULL) {
+
+  cli_inform("Compiling report data for {length(res.l.all)} comparisons...")
+
+  # Analysis metadata
+  analysis_metadata <- list(
+    experiment_name = config$experiment_name,
     n_samples = ncol(dds),
-    n_transcripts = nrow(dds),
+    n_genes = nrow(dds),
     n_comparisons = length(res.l.all),
     comparison_names = names(res.l.all),
-    design_formula = as.character(design(dds))[2]
+    design_formula = as.character(design(dds))[2],
+    analysis_date = Sys.Date(),
+    pipeline_version = "2025-09-27"
   )
-  
-  # Prepare PCA data
-  pca_data <- prepare_pca_data(dds)
-  
-  # Prepare heatmap data (top variable genes)
-  heatmap_data <- prepare_heatmap_data(dds, top_n = 20)
-  
-  # Summary statistics per comparison
+
+  # Comparison summary for overview using imap
   comparison_summary <- res.l.all %>%
-    imap_dfr(function(comp_data, comp_name) {
-      tibble(
-        comparison = comp_name,
-        total_genes = nrow(comp_data$all),
-        sig_genes = nrow(comp_data$sig),
-        de_genes = nrow(comp_data$DE),
-        max_log2fc = max(abs(comp_data$all$log2FoldChange), na.rm = TRUE),
-        min_padj = min(comp_data$sig$padj, na.rm = TRUE)
-      )
-    })
-  
-  # Prepare individual comparison data for detailed reports
-  comparison_data <- res.l.all %>%
-    imap(function(comp_data, comp_name) {
-      list(
-        name = comp_name,
-        contrast = contrast_list[[which(names(res.l.all) == comp_name)]],
-        results = comp_data,
-        # Volcano plot data with dynamic limits
-        volcano_data = prepare_volcano_data(comp_data$all),
-        # GSEA data if available
-        gsea_data = if (!is.null(gsea_results)) gsea_results[[comp_name]] else NULL
-      )
-    })
-  
-  # Return comprehensive data package
+    imap_dfr(~ tibble(
+      comparison = .y,
+      total_genes = nrow(.x$all),
+      sig_genes = nrow(.x$sig),
+      de_genes = nrow(.x$DE),
+      max_log2fc = round(max(abs(.x$all$log2FoldChange), na.rm = TRUE), 2),
+      min_padj = if(nrow(.x$sig) > 0) min(.x$sig$padj, na.rm = TRUE) else NA_real_
+    ))
+
+  # Compile comprehensive report data package
   list(
-    experiment = list(
-      metadata = experiment_metadata,
-      coldata = coldata,
-      config = config,
-      analysis_date = Sys.Date()
-    ),
-    plotting = list(
-      pca = pca_data,
-      heatmap = heatmap_data,
-      comparison_summary = comparison_summary
-    ),
-    comparisons = comparison_data,
-    annotations = annotations
-  )
+    # Core analysis results
+    dds = dds,
+    res.l.all = res.l.all,
+    contrast_list = contrast_list,
+    coldata = coldata,
+    config_snapshot = config,
+
+    # Summary information for overview
+    metadata = analysis_metadata,
+    comparison_summary = comparison_summary,
+
+    # GSEA results if available
+    gsea_results = gsea_results,
+
+    # Generation timestamp
+    generated_at = Sys.time()
+  ) %>%
+    {cli_inform("Report data compiled successfully"); .}
 }
 
-#' Prepare PCA data for plotting
-prepare_pca_data <- function(dds) {
-  # Use variance stabilizing transformation
-  vsd <- vst(dds, blind = FALSE)
-  
-  # Calculate PCA
-  pca_result <- prcomp(t(assay(vsd)))
-  
-  # Extract variance explained
-  variance_explained <- round(100 * pca_result$sdev^2 / sum(pca_result$sdev^2), 1)
-  
-  # Create plotting data
-  pca_data <- pca_result$x %>%
-    as.data.frame() %>%
-    rownames_to_column("sample") %>%
-    bind_cols(as.data.frame(colData(dds)))
-  
-  list(
-    data = pca_data,
-    variance_explained = variance_explained[1:4],  # PC1-4
-    loadings = pca_result$rotation[, 1:4]
-  )
+#' Save report data to technical directory
+save_report_data <- function(experiment_name, report_data) {
+
+  # Ensure proper directory structure exists
+  ensure_experiment_outputs(experiment_name)
+
+  # Determine output path following new directory structure
+  output_dir <- here("experiments", experiment_name, "outputs", "technical", "R")
+  output_file <- file.path(output_dir, paste0(experiment_name, "_report_data.RDS"))
+
+  report_data %>%
+    write_rds(output_file)
+
+  cli_inform("Report data saved to: {output_file}")
+  return(output_file)
 }
 
-#' Prepare heatmap data for top variable genes
-prepare_heatmap_data <- function(dds, top_n = 20) {
-  # Get normalized counts
-  norm_counts <- counts(dds, normalized = TRUE)
-  
-  # Calculate row variance and select top genes
-  row_vars <- apply(norm_counts, 1, var)
-  top_genes <- names(sort(row_vars, decreasing = TRUE))[1:top_n]
-  
-  # Extract and format data
-  heatmap_matrix <- norm_counts[top_genes, ] %>%
-    log2() %>%
-    t() %>%  # Samples as rows
-    scale() %>%  # Z-score normalization
-    t()  # Back to genes as rows
-  
-  # Clean gene names (extract VC#### from rownames)
-  gene_labels <- rownames(heatmap_matrix) %>%
-    str_extract("VC\\d+") %>%
-    coalesce(rownames(heatmap_matrix))
-  
-  rownames(heatmap_matrix) <- gene_labels
-  
-  list(
-    matrix = heatmap_matrix,
-    sample_annotation = as.data.frame(colData(dds)),
-    gene_labels = gene_labels
-  )
-}
+#' Load report data from technical directory
+load_report_data <- function(experiment_name) {
 
-#' Prepare volcano plot data with dynamic limits
-prepare_volcano_data <- function(results_df) {
-  # Clean data for plotting
-  volcano_df <- results_df %>%
-    filter(!is.na(log2FoldChange), !is.na(padj)) %>%
-    mutate(
-      # Handle zero p-values for visualization
-      padj_plot = pmax(padj, 1e-300),
-      # Significance categories
-      sig_category = case_when(
-        padj <= 0.05 & abs(log2FoldChange) >= 1 ~ "DE",
-        padj <= 0.05 ~ "Significant",
-        TRUE ~ "Not Significant"
-      )
-    )
-  
-  # Calculate dynamic axis limits
-  x_range <- range(volcano_df$log2FoldChange, na.rm = TRUE)
-  x_buffer <- diff(x_range) * 0.1
-  x_limits <- c(x_range[1] - x_buffer, x_range[2] + x_buffer)
-  
-  y_max <- max(-log10(volcano_df$padj_plot), na.rm = TRUE)
-  y_limits <- c(0, y_max * 1.1)
-  
-  list(
-    data = volcano_df,
-    x_limits = x_limits,
-    y_limits = y_limits,
-    summary = list(
-      total_genes = nrow(volcano_df),
-      de_genes = sum(volcano_df$sig_category == "DE"),
-      sig_genes = sum(volcano_df$sig_category %in% c("DE", "Significant"))
-    )
-  )
+  input_file <- here("experiments", experiment_name, "outputs", "technical", "R",
+                    paste0(experiment_name, "_report_data.RDS"))
+
+  if (!file.exists(input_file)) {
+    cli_abort("Report data not found: {input_file}")
+  }
+
+  cli_inform("Loading report data from: {input_file}")
+  read_rds(input_file)
 }
 
 # ============================================================================= #
-# REPORT GENERATION ----
+# INDIVIDUAL REPORT GENERATORS ----
 # ============================================================================= #
 
-#' Generate all reports for an experiment
+#' Generate overview landing page
 #'
-#' Creates both experimental summary and individual comparison reports
-#' in HTML and PDF formats. HTML reports include cross-linking.
+#' Creates main overview.html file at outputs root for collaborator access
 #'
-#' @param report_data Prepared data from prepare_report_data()
-#' @param experiment_name String identifier
-#' @param config Global configuration
-#' @param formats Vector of output formats (default: c("html", "pdf"))
-#'
-#' @return List of generated file paths
-generate_reports <- function(report_data, 
-                            experiment_name, 
-                            config = NULL,
-                            formats = c("html", "pdf")) {
-  
-  # Create reports directory
-  reports_dir <- ensure_reports_directory(experiment_name)
-  
-  generated_files <- list()
-  
-  # Generate experimental summary report
-  cli_inform("Generating experimental summary report...")
-  summary_files <- generate_experimental_summary(
-    report_data, experiment_name, reports_dir, formats
-  )
-  generated_files <- c(generated_files, summary_files)
-  
-  # Generate individual comparison reports
-  cli_inform("Generating {length(report_data$comparisons)} comparison reports...")
-  comparison_files <- report_data$comparisons %>%
-    map(function(comp_data) {
-      generate_comparison_report(
-        comp_data, report_data$experiment, reports_dir, formats
+#' @param experiment_name Experiment identifier
+#' @param report_data Compiled report data from compile_report_data()
+#' @param output_formats Vector of formats (default: "html")
+generate_overview_page <- function(experiment_name, report_data, output_formats = "html") {
+
+  cli_inform("Generating overview page...")
+
+  template_path <- here("templates", "reports", "overview.qmd")
+  if (!file.exists(template_path)) {
+    cli_warn("Overview template not found: {template_path}")
+    return(NULL)
+  }
+
+  # Output directly to outputs/ directory (not reports/)
+  output_dir <- here("experiments", experiment_name, "outputs")
+
+  output_formats %>%
+    keep(~ .x == "html") %>%  # Only HTML for overview
+    map(~ {
+      output_file <- file.path(output_dir, "overview.html")
+
+      success <- render_quarto_template(
+        template_path = template_path,
+        output_file = output_file,
+        output_format = "html",
+        params = list(
+          experiment_name = experiment_name,
+          data_dir = normalizePath(file.path(output_dir, "technical", "R"))
+        )
       )
+
+      if (success) {
+        cli_inform("Generated overview: {output_file}")
+        list(overview = output_file)
+      } else {
+        list()
+      }
     }) %>%
     flatten()
-  
-  generated_files <- c(generated_files, comparison_files)
-  
-  # Generate index page for HTML reports (if HTML format requested)
-  if ("html" %in% formats) {
-    index_file <- generate_report_index(report_data, experiment_name, reports_dir)
-    generated_files <- c(generated_files, list(index = index_file))
-  }
-  
-  cli_inform("Generated {length(generated_files)} report files")
-  return(generated_files)
 }
 
 #' Generate experimental summary report
-generate_experimental_summary <- function(report_data, experiment_name, reports_dir, formats) {
-  
-  template_path <- here("templates", "experimental_summary.qmd")
-  
+#'
+#' Creates comprehensive experimental overview with QC plots
+#'
+#' @param experiment_name Experiment identifier
+#' @param report_data Compiled report data
+#' @param output_formats Vector of formats (default: c("html", "pdf"))
+generate_experiment_summary_report <- function(experiment_name, report_data, output_formats = c("html", "pdf")) {
+
+  cli_inform("Generating experimental summary report...")
+
+  template_path <- here("templates", "reports", "experimental_summary.qmd")
   if (!file.exists(template_path)) {
-    cli_warn("Template not found: {template_path}")
+    cli_warn("Experimental summary template not found: {template_path}")
     return(list())
   }
-  
-  generated_files <- list()
-  
-  for (format in formats) {
-    output_file <- file.path(
-      reports_dir, 
-      paste0(experiment_name, "_summary.", if (format == "html") "html" else "pdf")
-    )
-    
-    # Render with quarto
-    quarto_render_safe(
-      input = template_path,
-      output_file = output_file,
-      output_format = format,
-      execute_params = list(
-        experiment_name = experiment_name,
-        report_data = report_data,
-        output_format = format
+
+  # Output to reports/html/ and reports/pdf/
+  output_dir <- here("experiments", experiment_name, "outputs")
+  data_dir <- file.path(output_dir, "technical", "R")
+
+  output_formats %>%
+    set_names(output_formats) %>%
+    imap(~ {
+      format_dir <- file.path(output_dir, "reports", .x)
+      if (!dir.exists(format_dir)) {
+        dir.create(format_dir, recursive = TRUE)
+      }
+
+      output_file <- file.path(format_dir, paste0(experiment_name, "_experimental_summary.", .x))
+
+      success <- render_quarto_template(
+        template_path = template_path,
+        output_file = output_file,
+        output_format = .x,
+        params = list(
+          experiment_name = experiment_name,
+          data_dir = normalizePath(data_dir),
+          comparison_names = names(report_data$res.l.all)
+        )
       )
-    )
-    
-    generated_files[[paste0("summary_", format)]] <- output_file
-  }
-  
-  return(generated_files)
+
+      if (success) {
+        cli_inform("Generated experimental summary ({.x}): {output_file}")
+        list(output_file)
+      } else {
+        list()
+      }
+    }) %>%
+    set_names(paste0("summary_", names(.))) %>%
+    flatten()
 }
 
 #' Generate individual comparison report
-generate_comparison_report <- function(comp_data, experiment_info, reports_dir, formats) {
-  
-  template_path <- here("templates", "comparison_report.qmd")
-  
+#'
+#' Creates detailed DE analysis report for single comparison
+#'
+#' @param experiment_name Experiment identifier
+#' @param comparison_name Name of specific comparison
+#' @param report_data Compiled report data
+#' @param output_formats Vector of formats (default: c("html", "pdf"))
+generate_comparison_report <- function(experiment_name, comparison_name, report_data, output_formats = c("html", "pdf")) {
+
+  cli_inform("Generating comparison report: {comparison_name}")
+
+  template_path <- here("templates", "reports", "comparison_report.qmd")
   if (!file.exists(template_path)) {
-    cli_warn("Template not found: {template_path}")
+    cli_warn("Comparison report template not found: {template_path}")
     return(list())
   }
-  
-  generated_files <- list()
-  comparison_name <- comp_data$name
-  
-  for (format in formats) {
-    output_file <- file.path(
-      reports_dir, 
-      paste0(comparison_name, "_report.", if (format == "html") "html" else "pdf")
-    )
-    
-    # Render with quarto
-    quarto_render_safe(
-      input = template_path,
-      output_file = output_file,
-      output_format = format,
-      execute_params = list(
-        comparison_name = comparison_name,
-        comparison_data = comp_data,
-        experiment_info = experiment_info,
-        output_format = format
-      )
-    )
-    
-    generated_files[[paste0(comparison_name, "_", format)]] <- output_file
+
+  # Verify comparison exists
+  if (!comparison_name %in% names(report_data$res.l.all)) {
+    cli_warn("Comparison '{comparison_name}' not found in results")
+    return(list())
   }
-  
-  return(generated_files)
+
+  output_dir <- here("experiments", experiment_name, "outputs")
+  data_dir <- file.path(output_dir, "technical", "R")
+
+  output_formats %>%
+    set_names(output_formats) %>%
+    imap(~ {
+      format_dir <- file.path(output_dir, "reports", .x)
+      if (!dir.exists(format_dir)) {
+        dir.create(format_dir, recursive = TRUE)
+      }
+
+      output_file <- file.path(format_dir, paste0(comparison_name, "_report.", .x))
+
+      success <- render_quarto_template(
+        template_path = template_path,
+        output_file = output_file,
+        output_format = .x,
+        params = list(
+          experiment_name = experiment_name,
+          comparison_name = comparison_name,
+          data_dir = normalizePath(data_dir)
+        )
+      )
+
+      if (success) {
+        cli_inform("Generated {comparison_name} report ({.x}): {output_file}")
+        list(output_file)
+      } else {
+        list()
+      }
+    }) %>%
+    set_names(paste0(comparison_name, "_", names(.))) %>%
+    flatten()
+}
+
+#' Generate interactive heatmap page
+#'
+#' Creates separate interactive heatmap for all genes
+#'
+#' @param experiment_name Experiment identifier
+#' @param report_data Compiled report data
+#' @param output_formats Vector of formats (default: "html")
+generate_interactive_heatmap <- function(experiment_name, report_data, output_formats = "html") {
+
+  cli_inform("Generating interactive heatmap...")
+
+  template_path <- here("templates", "reports", "interactive_heatmap.qmd")
+  if (!file.exists(template_path)) {
+    cli_warn("Interactive heatmap template not found: {template_path}")
+    return(list())
+  }
+
+  output_dir <- here("experiments", experiment_name, "outputs")
+  data_dir <- file.path(output_dir, "technical", "R")
+
+  output_formats %>%
+    keep(~ .x == "html") %>%  # Only HTML for interactive content
+    map(~ {
+      format_dir <- file.path(output_dir, "reports", "html")
+      if (!dir.exists(format_dir)) {
+        dir.create(format_dir, recursive = TRUE)
+      }
+
+      output_file <- file.path(format_dir, paste0(experiment_name, "_interactive_heatmap.html"))
+
+      success <- render_quarto_template(
+        template_path = template_path,
+        output_file = output_file,
+        output_format = "html",
+        params = list(
+          experiment_name = experiment_name,
+          data_dir = normalizePath(data_dir)
+        )
+      )
+
+      if (success) {
+        cli_inform("Generated interactive heatmap: {output_file}")
+        list(interactive_heatmap = output_file)
+      } else {
+        list()
+      }
+    }) %>%
+    flatten()
+}
+
+#' Generate all reports for an experiment
+#'
+#' Master function that creates complete report suite using tidyverse patterns
+#'
+#' @param experiment_name Experiment identifier
+#' @param report_data Compiled report data from compile_report_data()
+#' @param output_formats Vector of formats (default: c("html", "pdf"))
+generate_all_reports <- function(experiment_name, report_data, output_formats = c("html", "pdf")) {
+
+  cli_inform("Generating complete report suite for {experiment_name}")
+  cli_inform("Output formats: {paste(output_formats, collapse = ', ')}")
+
+  # Generate all report types using tidyverse patterns
+  all_generated_files <- list()
+
+  # 1. Overview page (HTML only)
+  if ("html" %in% output_formats) {
+    cli_inform("Generating overview reports...")
+    overview_files <- generate_overview_page(experiment_name, report_data, "html")
+    all_generated_files <- c(all_generated_files, overview_files)
+  }
+
+  # 2. Experimental summary report
+  cli_inform("Generating summary reports...")
+  summary_files <- generate_experiment_summary_report(experiment_name, report_data, output_formats)
+  all_generated_files <- c(all_generated_files, summary_files)
+
+  # 3. Interactive heatmap (HTML only)
+  if ("html" %in% output_formats) {
+    cli_inform("Generating heatmap reports...")
+    heatmap_files <- generate_interactive_heatmap(experiment_name, report_data, "html")
+    all_generated_files <- c(all_generated_files, heatmap_files)
+  }
+
+  # 4. Individual comparison reports
+  cli_inform("Generating comparison reports...")
+  comparison_files <- names(report_data$res.l.all) %>%
+    set_names(names(report_data$res.l.all)) %>%
+    map(~ generate_comparison_report(experiment_name, .x, report_data, output_formats)) %>%
+    flatten()
+  all_generated_files <- c(all_generated_files, comparison_files)
+
+  cli_inform("Report generation complete: {length(all_generated_files)} files generated")
+
+  # Log generated files for debugging using walk
+  all_generated_files %>%
+    iwalk(~ cli_inform("  {.y}: {.x}"))
+
+  all_generated_files
 }
 
 # ============================================================================= #
 # UTILITY FUNCTIONS ----
 # ============================================================================= #
 
-#' Ensure reports directory exists
-ensure_reports_directory <- function(experiment_name) {
-  reports_dir <- here("experiments", experiment_name, "outputs", "reports")
-  
-  if (!dir.exists(reports_dir)) {
-    dir.create(reports_dir, recursive = TRUE)
-  }
-  
-  return(reports_dir)
-}
+#' Safe Quarto template rendering with error handling
+#'
+#' Renders Quarto template with parameters and proper error handling
+#'
+#' @param template_path Path to .qmd template file
+#' @param output_file Full path for output file
+#' @param output_format Format ("html" or "pdf")
+#' @param params List of parameters to pass to template
+#'
+#' @return TRUE if successful, FALSE if failed
+render_quarto_template <- function(template_path, output_file, output_format, params) {
 
-#' Safe quarto rendering with error handling
-quarto_render_safe <- function(input, output_file, output_format, execute_params) {
-  
   tryCatch({
-    # Use quarto::quarto_render if available, otherwise system call
-    if (requireNamespace("quarto", quietly = TRUE)) {
-      quarto::quarto_render(
-        input = input,
-        output_file = output_file,
-        output_format = output_format,
-        execute_params = execute_params,
-        quiet = TRUE
-      )
-    } else {
-      # Fallback to system call
-      param_yaml <- tempfile(fileext = ".yml")
-      yaml::write_yaml(execute_params, param_yaml)
-      
-      system(glue(
-        "quarto render {input} ",
-        "--output {output_file} ",
-        "--to {output_format} ",
-        "--execute-params {param_yaml}"
-      ))
-      
-      unlink(param_yaml)
+
+    # Ensure proper directory structure exists (if experiment_name is in params)
+    if ("experiment_name" %in% names(params)) {
+      ensure_experiment_outputs(params$experiment_name)
     }
-    
-    cli_inform("Generated: {basename(output_file)}")
-    
+
+    # Ensure output directory exists
+    output_file %>%
+      dirname() %>%
+      {if (!dir.exists(.)) dir.create(., recursive = TRUE)}
+
+    # Use system call for Quarto rendering (R package has CLI path issues)
+    # The R quarto package causes "--output option cannot specify a relative or absolute path" errors
+    if (FALSE && requireNamespace("quarto", quietly = TRUE)) {
+
+      # Use absolute paths for better reliability
+      abs_template_path <- normalizePath(template_path)
+      abs_output_file <- normalizePath(dirname(output_file))
+      output_filename <- basename(output_file)
+
+      quarto::quarto_render(
+        input = abs_template_path,
+        output_file = file.path(abs_output_file, output_filename),
+        output_format = output_format,
+        execute_params = params,
+        quiet = FALSE  # Enable output for debugging
+      )
+
+    } else {
+
+      # Fallback to system call with temporary parameter file
+      param_file <- tempfile(fileext = ".yml")
+      params %>% write_yaml(param_file)
+
+      # Use absolute paths and render in template directory, then move
+      abs_template_path <- normalizePath(template_path)
+      template_dir <- dirname(abs_template_path)
+      template_name <- basename(abs_template_path)
+      abs_param_file <- normalizePath(param_file)
+
+      # Get expected output filename (Quarto will create this in template directory)
+      base_name <- tools::file_path_sans_ext(template_name)
+      expected_output <- file.path(template_dir, paste0(base_name, ".", if(output_format == "html") "html" else "pdf"))
+
+      cmd <- glue(
+        "cd '{template_dir}' && ",
+        "quarto render '{template_name}' ",
+        "--to {output_format} ",
+        "--execute-params '{abs_param_file}'"
+      )
+
+      result <- system(cmd, intern = FALSE)
+      unlink(param_file)
+
+      if (result != 0) {
+        stop("Quarto render failed with exit code ", result)
+      }
+
+      # Move the rendered file to desired location
+      if (file.exists(expected_output) && expected_output != output_file) {
+        file.copy(expected_output, output_file, overwrite = TRUE)
+        file.remove(expected_output)
+      }
+    }
+
+    # Verify output file was created
+    if (!file.exists(output_file)) {
+      stop("Output file was not created: ", output_file)
+    }
+
+    TRUE
+
   }, error = function(e) {
-    cli_warn("Failed to generate {basename(output_file)}: {e$message}")
+    cli_warn("Failed to render {basename(output_file)}: {e$message}")
+    FALSE
   })
 }
 
-#' Generate HTML index page linking all reports
-generate_report_index <- function(report_data, experiment_name, reports_dir) {
-  
-  index_content <- glue(
-    "# {experiment_name} - Analysis Reports\n\n",
-    "Generated: {Sys.Date()}\n\n",
-    "## Experimental Summary\n",
-    "- [Summary Report]({experiment_name}_summary.html)\n\n",
-    "## Individual Comparisons\n",
-    "{paste(map_chr(report_data$comparisons, ~ glue('- [{.x$name}]({.x$name}_report.html)')), collapse = '\n')}\n\n",
-    "## Analysis Overview\n",
-    "- **Samples:** {report_data$experiment$metadata$n_samples}\n",
-    "- **Transcripts:** {report_data$experiment$metadata$n_transcripts}\n", 
-    "- **Comparisons:** {report_data$experiment$metadata$n_comparisons}\n"
-  )
-  
-  index_file <- file.path(reports_dir, "index.html")
-  
-  # Convert markdown to HTML (simple approach)
-  if (requireNamespace("markdown", quietly = TRUE)) {
-    html_content <- markdown::markdownToHTML(text = index_content, fragment.only = TRUE)
-    writeLines(html_content, index_file)
-  } else {
-    # Fallback: write as markdown
-    index_file <- file.path(reports_dir, "index.md")
-    writeLines(index_content, index_file)
+# ============================================================================= #
+# INTEGRATION HELPER FUNCTIONS ----
+# ============================================================================= #
+
+#' Check if reports need to be generated (for run_utils.R integration)
+#'
+#' Checks timestamp and file existence to determine if reports are up to date
+#'
+#' @param experiment_name Experiment identifier
+#' @param report_data_file Path to report data RDS file
+#'
+#' @return List with status information
+check_reports_status <- function(experiment_name, report_data_file = NULL) {
+
+  report_data_file <- report_data_file %||%
+    here("experiments", experiment_name, "outputs", "technical", "R",
+         paste0(experiment_name, "_report_data.RDS"))
+
+  # Check if report data exists
+  if (!file.exists(report_data_file)) {
+    return(list(status = "missing_data", needs_generation = TRUE))
   }
-  
-  return(index_file)
+
+  # Check if overview.html exists
+  overview_file <- here("experiments", experiment_name, "outputs", "overview.html")
+  if (!file.exists(overview_file)) {
+    return(list(status = "missing_reports", needs_generation = TRUE))
+  }
+
+  # Compare timestamps
+  data_time <- file.info(report_data_file)$mtime
+  overview_time <- file.info(overview_file)$mtime
+
+  if (data_time > overview_time) {
+    return(list(status = "outdated", needs_generation = TRUE))
+  }
+
+  list(status = "current", needs_generation = FALSE)
+}
+
+#' Generate reports wrapper for integration with analysis scripts
+#'
+#' Simplified interface for use in analysis_script.R templates
+#'
+#' @param experiment_name Experiment identifier
+#' @param output_formats Vector of formats (default: c("html", "pdf"))
+#' @param force_regenerate Force regeneration even if reports exist
+run_report_generation <- function(experiment_name, output_formats = c("html", "pdf"), force_regenerate = FALSE) {
+
+  cli_h1("Report Generation")
+
+  # Check if regeneration needed
+  if (!force_regenerate) {
+    status <- check_reports_status(experiment_name)
+    if (!status$needs_generation) {
+      cli_inform("Reports are up to date (use --force to regenerate)")
+      return(invisible(TRUE))
+    }
+    cli_inform("Reports need regeneration: {status$status}")
+  }
+
+  # Load report data
+  report_data <- tryCatch({
+    load_report_data(experiment_name)
+  }, error = function(e) {
+    cli_abort("Failed to load report data. Run analysis first: {e$message}")
+  })
+
+  # Generate all reports
+  generated_files <- generate_all_reports(experiment_name, report_data, output_formats)
+
+  if (length(generated_files) > 0) {
+    cli_inform("Report generation completed successfully")
+    cli_inform("Main overview: experiments/{experiment_name}/outputs/overview.html")
+    invisible(TRUE)
+  } else {
+    cli_warn("No reports were generated")
+    invisible(FALSE)
+  }
 }

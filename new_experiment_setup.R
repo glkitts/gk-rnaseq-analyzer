@@ -34,14 +34,19 @@ cat(paste0("CREATING: ", experiment_name, "\n"))
 
 dir.create(experiment_dir, recursive = TRUE)
 
-# Create output directory structure
+# Create output directory structure following collaborator-friendly design
 output_dirs <- c(
   "outputs",
-  "outputs/results",
-  "outputs/results/individual_comparisons",
-  "outputs/plots",
   "outputs/reports",
-  "outputs/logs"
+  "outputs/reports/html",
+  "outputs/reports/pdf",
+  "outputs/plots",
+  "outputs/data_tables",
+  "outputs/data_tables/individual_comparisons",
+  "outputs/technical",
+  "outputs/technical/R",
+  "outputs/technical/metadata",
+  "outputs/technical/logs"
 )
 
 for (dir in output_dirs) {

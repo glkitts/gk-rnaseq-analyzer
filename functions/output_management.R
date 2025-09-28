@@ -36,12 +36,16 @@ ensure_experiment_outputs <- function(experiment_name) {
   # Complete directory structure (matches new_experiment_setup.R)
   required_dirs <- c(
     "outputs",
-    "outputs/results", 
-    "outputs/results/individual_comparisons",
+    "outputs/reports",
+    "outputs/reports/html",
+    "outputs/reports/pdf",
     "outputs/plots",
-    "outputs/R", 
-    "outputs/metadata",
-    "outputs/logs"
+    "outputs/data_tables",
+    "outputs/data_tables/individual_comparisons",
+    "outputs/technical",
+    "outputs/technical/R",
+    "outputs/technical/metadata",
+    "outputs/technical/logs"
   )
   
   dirs_created <- 0

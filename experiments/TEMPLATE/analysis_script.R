@@ -53,7 +53,7 @@ pathway_subsets <- pathway_subsets.path %>%
   purrr::set_names() %>%
   map(readxl::read_excel, path = pathway_subsets.path)
 
-genesets <- read_rds(config$paths$genesets)
+genesets <- read_rds(here(config$paths$genesets))
 
 # Determine what processing steps to run
 pipeline_step <- Sys.getenv("PIPELINE_STEP", "full")  # full, dds-only, analysis-only, reports-only
@@ -66,7 +66,7 @@ cat(glue("Running {experiment_name} - Step: {pipeline_step}\n"))
 # This section can be run interactively for testing
 
 # Load master metadata
-coldata.in <- readxl::read_excel(config$paths$metadata_file, sheet = "exp_metadata")
+coldata.in <- readxl::read_excel(here(config$paths$metadata_file), sheet = "exp_metadata")
 
 coldata <- coldata.in %>%
   filter(experiment_group %in% c(
@@ -86,7 +86,7 @@ coldata <- coldata.in %>%
     group = fct_inorder(sampleLabel),
     names = sample,
     files = file.path(
-      config$paths$salmon_base,
+      here(config$paths$salmon_base),
       experiment_folder,
       sample_FolderName,
       "salmon_quants",
@@ -256,17 +256,41 @@ if (pipeline_step %in% c("full", "analysis-only")) {
     )
   }
   
-  # Run GSEA for GO Molecular Function  
+  # Run GSEA for GO Molecular Function
   if (!is.null(genesets$GOmf_panther)) {
     gsea_gomf <- run_gsea_compilation(
       res.l.all = res.l.all,
       gene_sets = genesets$GOmf_panther,
-      gene_set_name = "GOmf", 
+      gene_set_name = "GOmf",
       subset_type = "all",
       experiment_name = experiment_name,
       save_excel = TRUE
     )
   }
+
+  # Compile report data for publication-quality reports
+  cat("Compiling report data...\n")
+
+  # Collect GSEA results if available
+  gsea_results <- list()
+  if (exists("gsea_gobp")) gsea_results$GObp <- gsea_gobp
+  if (exists("gsea_gomf")) gsea_results$GOmf <- gsea_gomf
+
+  # Add experiment_name to config for report generation
+  config$experiment_name <- experiment_name
+
+  # Compile comprehensive report data
+  report_data <- compile_report_data(
+    dds = dds,
+    res.l.all = res.l.all,
+    contrast_list = contrast_list,
+    coldata = coldata,
+    config = config,
+    gsea_results = if(length(gsea_results) > 0) gsea_results else NULL
+  )
+
+  # Save report data to technical directory
+  save_report_data(experiment_name, report_data)
 }
 
 # ============================================================================= #
@@ -274,20 +298,18 @@ if (pipeline_step %in% c("full", "analysis-only")) {
 # ============================================================================= #
 
 if (pipeline_step %in% c("full", "reports-only")) {
-  cat("Generating minimal reports...\n")
-  
-  # Use the final version with fixed symbols and correct directory
-  source(here("functions/final_minimal_reports.R"))
-  
-  minimal_reports <- generate_minimal_reports(
+  cat("Generating publication-quality reports...\n")
+
+  # Generate complete report suite using new system
+  success <- run_report_generation(
     experiment_name = experiment_name,
-    res.l.all = res.l.all,
-    dds = dds,
-    coldata = coldata,
-    contrast_list = contrast_list,
-    save_data = TRUE  # This saves res.l.all to outputs/R for future use
+    output_formats = c("html", "pdf"),
+    force_regenerate = FALSE
   )
-  
-  cli_inform("Minimal reports completed!")
-  cli_inform("Open summary: experiments/{experiment_name}/outputs/reports/{experiment_name}_minimal_summary.html")
+
+  if (success) {
+    cat(glue("\n✓ Report generation completed successfully!\n"))
+    cat(glue("📊 Main overview: experiments/{experiment_name}/outputs/overview.html\n"))
+    cat(glue("📁 All reports: experiments/{experiment_name}/outputs/reports/\n"))
+  }
 }
