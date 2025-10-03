@@ -48,4 +48,17 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
+# macOS system files
+.DS_Store
+
+# Zip files (backups)
+*.zip
+
+# Reference code (keep locally, not in repo)
+reference/
+
+# Internal documentation (keep locally, not in repo)
+PIPELINE_DOCUMENTATION.md
+
+# Experiment outputs
 experiments/*/outputs
