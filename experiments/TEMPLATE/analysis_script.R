@@ -57,7 +57,9 @@ genesets <- read_rds(here(config$paths$genesets))
 
 # Determine what processing steps to run
 pipeline_step <- Sys.getenv("PIPELINE_STEP", "full")  # full, dds-only, analysis-only, reports-only
+force_regenerate <- as.logical(Sys.getenv("FORCE_REGENERATE", "FALSE"))
 cat(glue("Running {experiment_name} - Step: {pipeline_step}\n"))
+if (force_regenerate) cat("Force regeneration enabled\n")
 
 # ============================================================================= #
 # COLDATA FILTERING LOGIC ----
@@ -217,10 +219,10 @@ if (pipeline_step %in% c("full", "analysis-only")) {
         )
     })
   
+  # Master table data is included in consolidated report data (_data.RDS)
   d <- res.l.all %>%
     compile_master_table(dds) %>%
-    merge_annotations(annotations) %>%
-    save_master_table(experiment_name)
+    merge_annotations(annotations)
   
   # Create DE compilation
   # Returns first sheet of compilation 
@@ -304,7 +306,7 @@ if (pipeline_step %in% c("full", "reports-only")) {
   success <- run_report_generation(
     experiment_name = experiment_name,
     output_formats = c("html", "pdf"),
-    force_regenerate = FALSE
+    force_regenerate = force_regenerate
   )
 
   if (success) {

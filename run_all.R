@@ -226,7 +226,8 @@ run_batch_experiments <- function(experiments = NULL,
           run_single_experiment(
             experiment_name = exp,
             pipeline_step = step,
-            verbose = verbose
+            verbose = verbose,
+            force = force
           )
         }, error = function(e) {
           cli_alert_danger("Error in {exp}: {e$message}")

@@ -14,7 +14,7 @@ suppressPackageStartupMessages({
 # ============================================================================= #
 
 # Font and sizing constants (from gk_functions.R)
-base_family <- "Arial"
+base_family <- "Helvetica"
 base_size <- 8
 base_line_size <- base_size / 22
 base_rect_size <- base_size / 22
@@ -37,7 +37,7 @@ plt.alpha <- 0.2
 
 #' Publication-quality theme based on gk_functions.R
 theme_report <- function(base_size = 8,
-                        base_family = "Arial",
+                        base_family = "Helvetica",
                         grid_lines = "none",
                         grid_color = "gray92") {
 

@@ -150,7 +150,8 @@ main <- function() {
   success <- run_single_experiment(
     experiment_name = experiment_name,
     pipeline_step = pipeline_step,
-    verbose = verbose
+    verbose = verbose,
+    force = force
   )
 
   if (success) {

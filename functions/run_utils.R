@@ -60,7 +60,7 @@ validate_experiment <- function(experiment_name) {
 #' @param pipeline_step One of: full, dds-only, analysis-only, reports-only
 #' @param verbose Print detailed output
 #' @return logical indicating success
-run_single_experiment <- function(experiment_name, pipeline_step = "full", verbose = TRUE) {
+run_single_experiment <- function(experiment_name, pipeline_step = "full", verbose = TRUE, force = FALSE) {
   validate_experiment(experiment_name)
 
   valid_steps <- c("full", "dds-only", "analysis-only", "reports-only")
@@ -75,8 +75,9 @@ run_single_experiment <- function(experiment_name, pipeline_step = "full", verbo
     cli_h1("Running {experiment_name} - Step: {pipeline_step}")
   }
 
-  # Set environment variable for pipeline step
+  # Set environment variables for pipeline step and force flag
   Sys.setenv(PIPELINE_STEP = pipeline_step)
+  Sys.setenv(FORCE_REGENERATE = as.character(force))
 
   # Change to experiment directory
   old_wd <- getwd()

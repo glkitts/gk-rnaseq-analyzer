@@ -487,7 +487,7 @@ check_reports_status <- function(experiment_name, report_data_file = NULL) {
 
   report_data_file <- report_data_file %||%
     here("experiments", experiment_name, "outputs", "technical", "R",
-         paste0(experiment_name, "_report_data.RDS"))
+         paste0(experiment_name, "_data.RDS"))
 
   # Check if report data exists
   if (!file.exists(report_data_file)) {

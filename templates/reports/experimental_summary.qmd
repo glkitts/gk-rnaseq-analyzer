@@ -26,6 +26,7 @@ suppressPackageStartupMessages({
   library(plotly)
   library(ComplexHeatmap)
   library(circlize)
+  library(RColorBrewer)
 })
 
 # Load report data
@@ -87,7 +88,7 @@ cat("Annotation factors:", paste(annotation_factors, collapse = ", "), "\n")
 # Create sample information table
 sample_info <- coldata %>%
   as_tibble(rownames = "sample_id") %>%
-  select(sample_id, everything())
+  select(sample_id, everything(), -files)
 
 DT::datatable(
   sample_info,
@@ -195,6 +196,12 @@ sample_dists <- dist(t(assay(vsd)))
 sample_dist_matrix <- as.matrix(sample_dists)
 rownames(sample_dist_matrix) <- colnames(sample_dist_matrix) <- colnames(vsd)
 
+# Create blue color scheme for distance heatmap
+blue_colors <- colorRamp2(
+  seq(min(sample_dist_matrix), max(sample_dist_matrix), length = 9),
+  rev(brewer.pal(9, "Blues"))
+)
+
 # Create annotation for heatmap using available factors
 annotation_df <- coldata %>%
   as.data.frame() %>%
@@ -224,6 +231,7 @@ if (ncol(annotation_df) > 0) {
   ht <- Heatmap(
     sample_dist_matrix,
     name = "Distance",
+    col = blue_colors,
     top_annotation = top_annotation,
     show_row_names = TRUE,
     show_column_names = TRUE,
@@ -236,6 +244,7 @@ if (ncol(annotation_df) > 0) {
   ht <- Heatmap(
     sample_dist_matrix,
     name = "Distance",
+    col = blue_colors,
     show_row_names = TRUE,
     show_column_names = TRUE,
     column_title = "Sample-to-Sample Distances",
@@ -335,21 +344,13 @@ For exploring all genes across all samples with interactive zooming and filterin
 
 [**🔗 Interactive Gene Expression Heatmap**](`r params$experiment_name`_interactive_heatmap.html)
 
-*Note: This interactive heatmap includes all ~`r format(nrow(vsd), big.mark = ",")`+ genes and may take a moment to load.*
+*Note: This interactive heatmap may take a while to load if the total gene number present is large.*
 
 ## Individual Comparison Links
 
 ```{r comparison-nav, results='asis', echo=FALSE}
-clean_comparison_name <- function(comparison_name) {
-  comparison_name %>%
-    str_replace_all("[^a-zA-Z0-9_-]", "_") %>%
-    str_replace_all("_{2,}", "_") %>%
-    str_remove("^_+|_+$")
-}
-
 comparison_links <- map_chr(comparison_names, function(comp) {
-  clean_name <- clean_comparison_name(comp)
-  glue::glue("- [{comp}]({params$experiment_name}_{clean_name}_DE.html)")
+  glue::glue("- [{comp}]({comp}_report.html)")
 })
 
 cat("### Detailed Reports\n\n")

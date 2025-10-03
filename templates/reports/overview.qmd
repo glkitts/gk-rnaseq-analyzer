@@ -48,13 +48,7 @@ sig_genes_summary <- map_dfr(names(res.l.all), function(comp_name) {
   )
 })
 
-# Helper function for clean comparison names in links
-clean_comparison_name <- function(comparison_name) {
-  comparison_name %>%
-    str_replace_all("[^a-zA-Z0-9_-]", "_") %>%
-    str_replace_all("_{2,}", "_") %>%
-    str_remove("^_+|_+$")
-}
+# Extract comparison names from metadata for direct linking
 ```
 
 ## Experiment Summary
@@ -89,15 +83,16 @@ Total Significant Genes
 ## Reports Available
 
 ### Main Reports
-- [**Experimental Summary Report**](reports/html/`r params$experiment_name`_summary.html) - Sample QC, PCA, and overview of all comparisons
+- [**Experimental Summary Report**](reports/html/`r params$experiment_name`_experimental_summary.html) - Sample QC, PCA, and overview of all comparisons
+- [**Interactive Heatmap**](reports/html/`r params$experiment_name`_interactive_heatmap.html) - Interactive visualization of gene expression patterns
 - [**Download Results (Excel)**](`r params$experiment_name`_DEcompilation.xlsx) - Complete results in spreadsheet format
 
 ### Individual Comparison Reports
 
 ```{r comparison-links, results='asis', echo=FALSE}
 comparison_links <- map_chr(metadata$comparison_names, function(comp) {
-  clean_name <- clean_comparison_name(comp)
-  glue::glue("- [{comp}](reports/html/{params$experiment_name}_{clean_name}_DE.html)")
+  # Use the comparison name directly with _report.html suffix
+  glue::glue("- [{comp}](reports/html/{comp}_report.html)")
 })
 
 cat(paste(comparison_links, collapse = "\n"))
