@@ -40,7 +40,7 @@ suppressPackageStartupMessages({
 })
 
 # Source report functions
-source(here("templates", "reports", "assets", "report_functions.R"))
+source(here("functions", "report_functions.R"))
 
 # Load report data
 report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))
@@ -184,29 +184,27 @@ p_volcano <- create_volcano_plot(
 print(p_volcano)
 ```
 
+::: {.content-visible when-format="html"}
 ### Interactive Volcano Plot
 
 Can zoom and pan, hovering over points should show locus tag and differential expression values.
 
 ```{r volcano-interactive}
+#| echo: false
 #| eval: !expr knitr::is_html_output()
 
-# Only show interactive plot for HTML output
-if (knitr::is_html_output()) {
-  p_volcano_interactive <- create_volcano_plot(
-    res_all = res_all,
-    res_sig = res_sig,
-    comparison_name = comparison_description,
-    sig_threshold = sig_threshold,
-    fc_threshold = fc_threshold,
-    interactive = TRUE
-  )
+p_volcano_interactive <- create_volcano_plot(
+  res_all = res_all,
+  res_sig = res_sig,
+  comparison_name = comparison_description,
+  sig_threshold = sig_threshold,
+  fc_threshold = fc_threshold,
+  interactive = TRUE
+)
 
-  p_volcano_interactive
-} else {
-  cat("*Interactive plot available in HTML version only*")
-}
+p_volcano_interactive
 ```
+:::
 
 ## Top Differentially Expressed Genes
 
@@ -242,19 +240,29 @@ if (nrow(sig_up_genes) > 0) {
   # Clean column names for display
   colnames(top_up) <- c("Label", "log₂FC", "Adj. P-value", "Product")
 
-  DT::datatable(
-    top_up,
-    options = list(
-      pageLength = 20,
-      scrollX = TRUE,
-      dom = 't',
-      columnDefs = list(
-        list(className = 'dt-center', targets = 1:2)
+  # Format-conditional table output
+  if (knitr::is_html_output()) {
+    DT::datatable(
+      top_up,
+      options = list(
+        pageLength = 20,
+        scrollX = TRUE,
+        dom = 't',
+        columnDefs = list(
+          list(className = 'dt-center', targets = 1:2)
+        )
+      ),
+      caption = paste("Top", nrow(top_up), "most upregulated genes (by log₂FC strength, padj < 0.05)")
+    ) %>%
+    DT::formatSignif(columns = c("log₂FC", "Adj. P-value"), digits = 3)
+  } else {
+    top_up %>%
+      mutate(across(c(`log₂FC`, `Adj. P-value`), ~signif(.x, 3))) %>%
+      knitr::kable(
+        caption = paste("Top", nrow(top_up), "most upregulated genes (by log₂FC strength, padj < 0.05)"),
+        format = "pipe"
       )
-    ),
-    caption = paste("Top", nrow(top_up), "most upregulated genes (by log₂FC strength, padj < 0.05)")
-  ) %>%
-  DT::formatSignif(columns = c("log₂FC", "Adj. P-value"), digits = 3)
+  }
 } else {
   cat("No significantly upregulated genes found (padj < 0.05).")
 }
@@ -282,19 +290,29 @@ if (nrow(sig_down_genes) > 0) {
   # Clean column names for display
   colnames(top_down) <- c("Label", "log₂FC", "Adj. P-value", "Product")
 
-  DT::datatable(
-    top_down,
-    options = list(
-      pageLength = 20,
-      scrollX = TRUE,
-      dom = 't',
-      columnDefs = list(
-        list(className = 'dt-center', targets = 1:2)
+  # Format-conditional table output
+  if (knitr::is_html_output()) {
+    DT::datatable(
+      top_down,
+      options = list(
+        pageLength = 20,
+        scrollX = TRUE,
+        dom = 't',
+        columnDefs = list(
+          list(className = 'dt-center', targets = 1:2)
+        )
+      ),
+      caption = paste("Top", nrow(top_down), "most downregulated genes (by log₂FC strength, padj < 0.05)")
+    ) %>%
+    DT::formatSignif(columns = c("log₂FC", "Adj. P-value"), digits = 3)
+  } else {
+    top_down %>%
+      mutate(across(c(`log₂FC`, `Adj. P-value`), ~signif(.x, 3))) %>%
+      knitr::kable(
+        caption = paste("Top", nrow(top_down), "most downregulated genes (by log₂FC strength, padj < 0.05)"),
+        format = "pipe"
       )
-    ),
-    caption = paste("Top", nrow(top_down), "most downregulated genes (by log₂FC strength, padj < 0.05)")
-  ) %>%
-  DT::formatSignif(columns = c("log₂FC", "Adj. P-value"), digits = 3)
+  }
 } else {
   cat("No significantly downregulated genes found (padj < 0.05).")
 }
@@ -355,7 +373,20 @@ if (!is.null(gsea_data) && is.data.frame(gsea_data) && nrow(gsea_data) > 0) {
       c(size_min, size_max)
     }
 
-    # Create the plot
+    # Create the plot with format-conditional styling
+    # Use HTML tags only for HTML output
+    color_label <- if (knitr::is_html_output()) {
+      "-log<sub>10</sub>(padj)"
+    } else {
+      "-log10(padj)"
+    }
+
+    size_label <- if (knitr::is_html_output()) {
+      "Leading Edge<br>Genes"
+    } else {
+      "Leading Edge\nGenes"
+    }
+
     p <- ggplot(sig_pathways, aes(
       x = NES,
       y = pathway_clean,
@@ -364,14 +395,14 @@ if (!is.null(gsea_data) && is.data.frame(gsea_data) && nrow(gsea_data) > 0) {
     )) +
       geom_point() +
       viridis::scale_color_viridis(
-        name = "-log<sub>10</sub>(padj)",
+        name = color_label,
         limits = c(color_min, color_max),
         breaks = color_breaks,
         option = "viridis",
         oob = scales::oob_squish
       ) +
       scale_size_continuous(
-        name = "Leading Edge<br>Genes",
+        name = size_label,
         range = c(2, 8),
         limits = c(size_min, size_max),
         breaks = size_breaks
@@ -383,19 +414,25 @@ if (!is.null(gsea_data) && is.data.frame(gsea_data) && nrow(gsea_data) > 0) {
       labs(
         title = paste("GO Biological Process Enrichment:", comparison_description),
         y = NULL,
-        subtitle = paste(nrow(sig_pathways), "significant pathways (padj ≤ 0.05, >2 genes)")
+        subtitle = paste(nrow(sig_pathways), "significant pathways (padj <= 0.05, >2 genes)")
       ) +
       theme_report() +
       theme(
         legend.position = "right",
         legend.direction = "vertical",
         legend.box = "vertical",
-        legend.title = element_markdown(size = rel(0.9)),
+        legend.title = element_text(size = rel(0.9)),
         # axis.text.y = element_text(size = rel(0.75)),
         legend.background = element_rect(fill = NA),
         plot.margin = margin(10, 10, 10, 10)
-      ) +
-      coord_cartesian(clip = "off")
+      )
+
+    # Apply markdown theme only for HTML
+    if (knitr::is_html_output()) {
+      p <- p + pt.mdtext
+    }
+
+    p <- p + coord_cartesian(clip = "off")
 
     print(p)
 

@@ -90,15 +90,24 @@ sample_info <- coldata %>%
   as_tibble(rownames = "sample_id") %>%
   select(sample_id, everything(), -files)
 
-DT::datatable(
-  sample_info,
-  options = list(
-    pageLength = 15,
-    scrollX = TRUE,
-    dom = 'Bfrtip'
-  ),
-  caption = "Sample metadata and experimental conditions"
-)
+# Format-conditional table output
+if (knitr::is_html_output()) {
+  DT::datatable(
+    sample_info,
+    options = list(
+      pageLength = 15,
+      scrollX = TRUE,
+      dom = 'Bfrtip'
+    ),
+    caption = "Sample metadata and experimental conditions"
+  )
+} else {
+  knitr::kable(
+    sample_info,
+    caption = "Sample metadata and experimental conditions",
+    format = "pipe"
+  )
+}
 ```
 
 ## Quality Control
@@ -286,8 +295,6 @@ de_summary %>%
     "% Significant" = percent_significant
   ) %>%
   knitr::kable(
-    format = "html",
-    table.attr = 'class="table table-striped"',
     caption = "Summary of differential expression results across all comparisons"
   )
 ```
@@ -337,6 +344,7 @@ if (ncol(annotation_df) > 0) {
 draw(ht_genes)
 ```
 
+::: {.content-visible when-format="html"}
 ## Interactive Visualizations
 
 ### Full Gene Expression Heatmap
@@ -345,6 +353,7 @@ For exploring all genes across all samples with interactive zooming and filterin
 [**🔗 Interactive Gene Expression Heatmap**](`r params$experiment_name`_interactive_heatmap.html)
 
 *Note: This interactive heatmap may take a while to load if the total gene number present is large.*
+:::
 
 ## Individual Comparison Links
 

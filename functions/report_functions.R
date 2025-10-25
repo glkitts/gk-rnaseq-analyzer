@@ -5,6 +5,7 @@ suppressPackageStartupMessages({
   library(tidyverse)
   library(ggplot2)
   library(ggrepel)
+  library(ggtext)
   library(scales)
   library(plotly)
 })
@@ -93,6 +94,20 @@ theme_report <- function(base_size = 8,
       strip.text = element_text(size = rel(0.9), face = "plain")
     )
 }
+
+#' Markdown text theme layer
+#' Converts text elements to support markdown/HTML formatting
+#' Based on pt.mdtext from gk_functions.R
+pt.mdtext <- theme(
+  axis.text.x = element_markdown(),
+  axis.text.y = element_markdown(),
+  axis.title.x = element_markdown(),
+  axis.title.y = element_markdown(),
+  plot.title = element_markdown(),
+  strip.text = element_markdown(),
+  legend.text = element_markdown(),
+  legend.title = element_markdown()
+)
 
 # ============================================================================= #
 # DATA PROCESSING FUNCTIONS ----
@@ -185,10 +200,16 @@ get_volcano_labels <- function(res_sig, n_up = 5, n_down = 5) {
 #' @param sig_threshold Significance threshold (default 0.05)
 #' @param fc_threshold Fold change threshold for labeling (default 1)
 #' @param interactive Create interactive plotly version (default FALSE)
+#' @param use_markdown Use markdown formatting for labels (default TRUE for HTML, FALSE for PDF)
 #' @return ggplot object or plotly object
 create_volcano_plot <- function(res_all, res_sig, comparison_name,
                                sig_threshold = 0.05, fc_threshold = 1,
-                               interactive = FALSE) {
+                               interactive = FALSE, use_markdown = NULL) {
+
+  # Auto-detect markdown usage based on output format if not specified
+  if (is.null(use_markdown)) {
+    use_markdown <- knitr::is_html_output()
+  }
 
   # Process data
   volcano_data <- res_all %>%
@@ -238,9 +259,13 @@ create_volcano_plot <- function(res_all, res_sig, comparison_name,
   colors <- c("Up" = "#E31A1C", "Down" = "#1F78B4",
               "Significant" = "#33A02C", "Not Significant" = "gray70")
 
+  # Set labels based on output format
+  x_label <- if (use_markdown) "log<sub>2</sub> Fold Change" else "log2 Fold Change"
+  y_label <- if (use_markdown) "-log<sub>10</sub>(Adjusted P-value)" else "-log10(Adjusted P-value)"
+
   # Create base plot
   p <- ggplot(volcano_data, aes(x = log2FoldChange, y = log_padj)) +
-    geom_point(aes(color = direction, text = hover_label),
+    geom_point(aes(color = direction, label = hover_label),
                alpha = 0.6, size = 1) +
     scale_color_manual(values = colors, name = "Direction") +
     scale_x_continuous(limits = x_limits) +
@@ -252,12 +277,17 @@ create_volcano_plot <- function(res_all, res_sig, comparison_name,
                linetype = "dotted", color = "gray50", alpha = 0.5) +
     labs(
       title = paste("Volcano Plot:", comparison_name),
-      x = "log₂ Fold Change",
-      y = "-log₁₀(Adjusted P-value)",
+      x = x_label,
+      y = y_label,
       subtitle = paste(nrow(res_sig), "significant genes out of",
                       format(nrow(volcano_data), big.mark = ","), "tested")
     ) +
     theme_report()
+
+  # Apply markdown theme only when using markdown labels
+  if (use_markdown) {
+    p <- p + pt.mdtext
+  }
 
   # Add labels for top genes
   if (length(genes_to_label) > 0 && !is.null(label_col)) {
@@ -274,7 +304,7 @@ create_volcano_plot <- function(res_all, res_sig, comparison_name,
   }
 
   if (interactive) {
-    p <- ggplotly(p, tooltip = c("x", "y", "text", "colour")) %>%
+    p <- ggplotly(p, tooltip = c("x", "y", "label", "colour")) %>%
       layout(
         title = list(text = paste("Volcano Plot:", comparison_name),
                     font = list(size = 14)),
@@ -301,9 +331,15 @@ calculate_pathway_plot_height <- function(n_pathways, base_height = 3,
 #' @param comparison_name Name of comparison
 #' @param max_pathways Maximum pathways to show (default 20)
 #' @param interactive Create interactive version (default FALSE)
+#' @param use_markdown Use markdown formatting for labels (default TRUE for HTML, FALSE for PDF)
 #' @return ggplot object or NULL if no significant pathways
 create_gsea_plot <- function(gsea_results, comparison_name, max_pathways = 20,
-                           interactive = FALSE) {
+                           interactive = FALSE, use_markdown = NULL) {
+
+  # Auto-detect markdown usage based on output format if not specified
+  if (is.null(use_markdown)) {
+    use_markdown <- knitr::is_html_output()
+  }
 
   if (is.null(gsea_results) || nrow(gsea_results) == 0) {
     return(NULL)
@@ -325,12 +361,15 @@ create_gsea_plot <- function(gsea_results, comparison_name, max_pathways = 20,
     return(NULL)
   }
 
+  # Set labels based on output format
+  color_label <- if (use_markdown) "-log<sub>10</sub>(padj)" else "-log10(padj)"
+
   # Create plot
   p <- ggplot(plot_data, aes(x = NES, y = pathway_clean)) +
     geom_point(aes(color = -log10(padj), size = lengths(leadingEdge)),
                alpha = 0.8) +
     scale_color_gradient(low = "blue", high = "red",
-                        name = "-log₁₀(padj)") +
+                        name = color_label) +
     scale_size_continuous(range = c(2, 8), name = "Gene Count") +
     geom_vline(xintercept = 0, linetype = "solid", color = "black", alpha = 0.3) +
     labs(
@@ -344,6 +383,11 @@ create_gsea_plot <- function(gsea_results, comparison_name, max_pathways = 20,
       axis.text.y = element_text(size = rel(0.8)),
       legend.position = "right"
     )
+
+  # Apply markdown theme only when using markdown labels
+  if (use_markdown) {
+    p <- p + pt.mdtext
+  }
 
   if (interactive) {
     p <- ggplotly(p, tooltip = c("x", "y", "colour", "size")) %>%
