@@ -335,9 +335,9 @@ create_de_compilation <- function(res.l.all,
     excel.list <- c(excel.list, individual_sheets)
   }
   
-  
-  
-  cli_inform("Excel structure: {length(excel.list)} sheets")
+
+
+  cli_inform("DE compilation: {length(excel.list)} sheets")
   return(excel.list)
 }
 

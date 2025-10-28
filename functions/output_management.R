@@ -59,7 +59,7 @@ ensure_experiment_outputs <- function(experiment_name) {
   
   # Only announce if we had to create missing directories
   if (dirs_created > 0) {
-    cat(sprintf("📁 Created %d missing output directories\n", dirs_created))
+    cli_inform("Created {dirs_created} missing output director{?y/ies}")
   }
   
   return(outputs_dir)

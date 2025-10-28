@@ -273,12 +273,11 @@ run_gsea_compilation <- function(res.l.all,
                                  experiment_name,
                                  save_excel = TRUE) {
   
-  cli_inform("Running GSEA compilation: {gene_set_name} ({subset_type} subset)")
-  
+  cli_inform("Running GSEA: {gene_set_name} ({subset_type})")
+
   # Run GSEA for each comparison
   gsea_results <- res.l.all %>%
     imap(function(comparison_data, comparison_name) {
-      cli_inform("  Processing {comparison_name}")
       
       # Get the specified subset for ranking
       res_subset <- comparison_data[[subset_type]]
@@ -323,8 +322,8 @@ run_gsea_compilation <- function(res.l.all,
       subset_type = subset_type,
       experiment_name = experiment_name
     )
-    
-    cli_inform("Saved GSEA compilation: {basename(excel_file)}")
+
+    cli_inform("GSEA saved: {basename(excel_file)}")
   }
   
   return(list(

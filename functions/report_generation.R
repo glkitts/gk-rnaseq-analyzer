@@ -37,8 +37,6 @@ source(here("functions/output_management.R"))
 #' @return List with organized data for report templates
 compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config, gsea_results = NULL) {
 
-  cli_inform("Compiling report data for {length(res.l.all)} comparisons...")
-
   # Analysis metadata
   analysis_metadata <- list(
     experiment_name = config$experiment_name,
@@ -80,8 +78,7 @@ compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config, 
 
     # Generation timestamp
     generated_at = Sys.time()
-  ) %>%
-    {cli_inform("Report data compiled successfully"); .}
+  )
 }
 
 #' Save report data to technical directory
@@ -97,7 +94,7 @@ save_report_data <- function(experiment_name, report_data) {
   report_data %>%
     write_rds(output_file)
 
-  cli_inform("Report data saved to: {output_file}")
+  cli_inform("Report data saved: {basename(output_file)}")
   return(output_file)
 }
 
@@ -111,7 +108,6 @@ load_report_data <- function(experiment_name) {
     cli_abort("Report data not found: {input_file}")
   }
 
-  cli_inform("Loading report data from: {input_file}")
   read_rds(input_file)
 }
 
@@ -127,8 +123,6 @@ load_report_data <- function(experiment_name) {
 #' @param report_data Compiled report data from compile_report_data()
 #' @param output_formats Vector of formats (default: "html")
 generate_overview_page <- function(experiment_name, report_data, output_formats = "html") {
-
-  cli_inform("Generating overview page...")
 
   template_path <- here("templates", "reports", "overview.qmd")
   if (!file.exists(template_path)) {
@@ -155,7 +149,6 @@ generate_overview_page <- function(experiment_name, report_data, output_formats 
       )
 
       if (success) {
-        cli_inform("Generated overview: {output_file}")
         list(overview = output_file)
       } else {
         list()
@@ -172,8 +165,6 @@ generate_overview_page <- function(experiment_name, report_data, output_formats 
 #' @param report_data Compiled report data
 #' @param output_formats Vector of formats (default: c("html", "pdf"))
 generate_experiment_summary_report <- function(experiment_name, report_data, output_formats = c("html", "pdf")) {
-
-  cli_inform("Generating experimental summary report...")
 
   template_path <- here("templates", "reports", "experimental_summary.qmd")
   if (!file.exists(template_path)) {
@@ -206,7 +197,6 @@ generate_experiment_summary_report <- function(experiment_name, report_data, out
       )
 
       if (success) {
-        cli_inform("Generated experimental summary ({.x}): {output_file}")
         list(output_file)
       } else {
         list()
@@ -225,8 +215,6 @@ generate_experiment_summary_report <- function(experiment_name, report_data, out
 #' @param report_data Compiled report data
 #' @param output_formats Vector of formats (default: c("html", "pdf"))
 generate_comparison_report <- function(experiment_name, comparison_name, report_data, output_formats = c("html", "pdf")) {
-
-  cli_inform("Generating comparison report: {comparison_name}")
 
   template_path <- here("templates", "reports", "comparison_report.qmd")
   if (!file.exists(template_path)) {
@@ -265,7 +253,6 @@ generate_comparison_report <- function(experiment_name, comparison_name, report_
       )
 
       if (success) {
-        cli_inform("Generated {comparison_name} report ({.x}): {output_file}")
         list(output_file)
       } else {
         list()
@@ -283,8 +270,6 @@ generate_comparison_report <- function(experiment_name, comparison_name, report_
 #' @param report_data Compiled report data
 #' @param output_formats Vector of formats (default: "html")
 generate_interactive_heatmap <- function(experiment_name, report_data, output_formats = "html") {
-
-  cli_inform("Generating interactive heatmap...")
 
   template_path <- here("templates", "reports", "interactive_heatmap.qmd")
   if (!file.exists(template_path)) {
@@ -316,7 +301,6 @@ generate_interactive_heatmap <- function(experiment_name, report_data, output_fo
       )
 
       if (success) {
-        cli_inform("Generated interactive heatmap: {output_file}")
         list(interactive_heatmap = output_file)
       } else {
         list()
@@ -334,44 +318,35 @@ generate_interactive_heatmap <- function(experiment_name, report_data, output_fo
 #' @param output_formats Vector of formats (default: c("html", "pdf"))
 generate_all_reports <- function(experiment_name, report_data, output_formats = c("html", "pdf")) {
 
-  cli_inform("Generating complete report suite for {experiment_name}")
-  cli_inform("Output formats: {paste(output_formats, collapse = ', ')}")
+  cli_inform("Generating reports: {paste(output_formats, collapse = ', ')}")
 
   # Generate all report types using tidyverse patterns
   all_generated_files <- list()
 
   # 1. Overview page (HTML only)
   if ("html" %in% output_formats) {
-    cli_inform("Generating overview reports...")
     overview_files <- generate_overview_page(experiment_name, report_data, "html")
     all_generated_files <- c(all_generated_files, overview_files)
   }
 
   # 2. Experimental summary report
-  cli_inform("Generating summary reports...")
   summary_files <- generate_experiment_summary_report(experiment_name, report_data, output_formats)
   all_generated_files <- c(all_generated_files, summary_files)
 
   # 3. Interactive heatmap (HTML only)
   if ("html" %in% output_formats) {
-    cli_inform("Generating heatmap reports...")
     heatmap_files <- generate_interactive_heatmap(experiment_name, report_data, "html")
     all_generated_files <- c(all_generated_files, heatmap_files)
   }
 
   # 4. Individual comparison reports
-  cli_inform("Generating comparison reports...")
   comparison_files <- names(report_data$res.l.all) %>%
     set_names(names(report_data$res.l.all)) %>%
     map(~ generate_comparison_report(experiment_name, .x, report_data, output_formats)) %>%
     flatten()
   all_generated_files <- c(all_generated_files, comparison_files)
 
-  cli_inform("Report generation complete: {length(all_generated_files)} files generated")
-
-  # Log generated files for debugging using walk
-  all_generated_files %>%
-    iwalk(~ cli_inform("  {.y}: {.x}"))
+  cli_inform("Reports generated: {length(all_generated_files)} files")
 
   all_generated_files
 }
@@ -520,16 +495,13 @@ check_reports_status <- function(experiment_name, report_data_file = NULL) {
 #' @param force_regenerate Force regeneration even if reports exist
 run_report_generation <- function(experiment_name, output_formats = c("html", "pdf"), force_regenerate = FALSE) {
 
-  cli_h1("Report Generation")
-
   # Check if regeneration needed
   if (!force_regenerate) {
     status <- check_reports_status(experiment_name)
     if (!status$needs_generation) {
-      cli_inform("Reports are up to date (use --force to regenerate)")
+      cli_inform("Reports up to date (use --force to regenerate)")
       return(invisible(TRUE))
     }
-    cli_inform("Reports need regeneration: {status$status}")
   }
 
   # Load report data
@@ -543,8 +515,6 @@ run_report_generation <- function(experiment_name, output_formats = c("html", "p
   generated_files <- generate_all_reports(experiment_name, report_data, output_formats)
 
   if (length(generated_files) > 0) {
-    cli_inform("Report generation completed successfully")
-    cli_inform("Main overview: experiments/{experiment_name}/outputs/overview.html")
     invisible(TRUE)
   } else {
     cli_warn("No reports were generated")

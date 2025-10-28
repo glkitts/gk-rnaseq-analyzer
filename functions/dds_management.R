@@ -48,9 +48,7 @@ create_dds_from_salmon <- function(coldata,
   if (nrow(coldata) == 0) {
     cli_abort("coldata cannot be empty")
   }
-  
-  cli_inform("Creating DDS for {experiment_name} with {nrow(coldata)} samples")
-  
+
   # Create tximeta object
   gse <- tximeta(coldata, skipMeta = TRUE)
   
@@ -86,9 +84,8 @@ filter_low_counts <- function(dds, min_counts = 2) {
   dds_filtered <- dds[keep, ]
   nrow_after <- nrow(dds_filtered)
   nrow_removed <- nrow_before - nrow_after
-  
-  cli_inform("Filtering: {nrow_removed} of {nrow_before} transcripts removed (≤{min_counts} counts)")
-  cli_inform("{nrow_after} transcripts retained for analysis")
+
+  cli_inform("Filtered {nrow_removed}/{nrow_before} transcripts (≤{min_counts} counts) | {nrow_after} retained")
   
   filtering_stats <- list(
     transcripts_before_filtering = nrow_before,
@@ -109,7 +106,10 @@ load_dds <- function(experiment_name) {
   dds_path <- here("experiments", experiment_name, "outputs", "technical", "R", paste0(experiment_name, ".dds.RDS"))
   
   if (!file.exists(dds_path)) {
-    stop(glue("DDS not found. Run: Rscript run_experiment.R {experiment_name} --dds-only"))
+    cli_abort(c(
+      "DDS file not found",
+      "i" = "Run: Rscript run_experiment.R {experiment_name} --dds-only"
+    ))
   }
   
   return(read_rds(dds_path))
@@ -156,19 +156,15 @@ save_dds_with_metadata <- function(dds,
   
   # Save files
   if (!is.null(coldata)) {
-    cli_inform("Saving coldata: {basename(coldata_path)}")
     write_csv(coldata, coldata_path)
   }
-  
-  cli_inform("Saving DDS: {basename(dds_path)}")
+
   saveRDS(dds, dds_path)
-  
-  cli_inform("Saving metadata: {basename(metadata_path)}")
   yaml::write_yaml(metadata, metadata_path)
-  
+
   # Report success
   file_size_mb <- round(file.size(dds_path) / 1024^2, 1)
-  cli_inform("DDS saved for {experiment_name} ({file_size_mb} MB) | Samples: {ncol(dds)} | Transcripts: {nrow(dds)}")
+  cli_inform("DDS saved: {ncol(dds)} samples, {nrow(dds)} genes ({file_size_mb} MB)")
   
   # Return paths
   list(
