@@ -85,15 +85,16 @@ run_single_experiment <- function(experiment_name, pipeline_step = "full", verbo
   setwd(experiment_dir)
 
   # Source the analysis script
+  # Only catch actual errors - let warnings display naturally
   tryCatch({
     source(analysis_script, echo = verbose)
     if (verbose) {
       cli_alert_success("Completed {experiment_name} - {pipeline_step}")
     }
-    return(TRUE)
+    TRUE
   }, error = function(e) {
     cli_alert_danger("Failed {experiment_name} - {pipeline_step}: {e$message}")
-    return(FALSE)
+    FALSE
   })
 }
 

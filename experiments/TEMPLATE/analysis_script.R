@@ -187,9 +187,11 @@ if (pipeline_step %in% c("full", "dds-only")) {
 
 if (pipeline_step %in% c("full", "analysis-only")) {
   cat("Running differential expression analysis...\n")
-  
-  # Load DDS if not already in memory
-  if (!exists("dds")) {
+
+  # Load DDS if not created in previous step (handles batch mode correctly)
+  # In "full" mode, dds already exists from DDS generation block above
+  # In "analysis-only" mode, must load from file (will error if missing)
+  if (pipeline_step == "analysis-only") {
     dds <- load_dds(experiment_name)
   }
   
@@ -218,7 +220,14 @@ if (pipeline_step %in% c("full", "analysis-only")) {
           # types = c("all", "DE")
         )
     })
-  
+
+  # Save normalized counts CSV
+  nc_csv_path <- save_normalized_counts_csv(
+    dds = dds,
+    experiment_name = experiment_name,
+    annotations = annotations
+  )
+
   # Master table data is included in consolidated report data (_data.RDS)
   d <- res.l.all %>%
     compile_master_table(dds) %>%

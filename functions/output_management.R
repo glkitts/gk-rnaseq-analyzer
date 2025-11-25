@@ -95,6 +95,64 @@ save_individual_csvs <- function(res.l,
   return(file_paths)
 }
 
+
+save_normalized_counts_csv <- function(dds,
+                                       experiment_name,
+                                       annotations,
+                                       output_dir = NULL) {
+  #' Save DESeq2 normalized counts to CSV with basic gene annotations
+  #'
+  #' Creates a genes × samples matrix with normalized count data.
+  #' Includes Label, Product, and original_names columns alongside counts.
+  #'
+  #' @param dds DESeq2 dataset object with normalized counts
+  #' @param experiment_name String, experiment identifier
+  #' @param annotations Data frame with gene annotations
+  #' @param output_dir String, optional custom output directory
+  #'
+  #' @return String path to created CSV file
+
+  ensure_experiment_outputs(experiment_name)
+
+  if (is.null(output_dir)) {
+    output_dir <- here("experiments",
+                       experiment_name,
+                       "outputs/data_tables/")
+  }
+
+  # Extract normalized counts
+  nc_data <- counts(dds, normalized = TRUE) %>%
+    as.data.frame() %>%
+    rownames_to_column("original_names") %>%
+    separate_wider_delim(
+      original_names,
+      delim = "|",
+      names = c("Label", NA, NA),
+      too_few = "align_start",
+      too_many = "drop",
+      cols_remove = FALSE
+    ) %>%
+    distinct(Label, .keep_all = TRUE)
+
+  # Extract basic annotations (Label and Product only - gene name is in original_names)
+  basic_annotations <- annotations %>%
+    select(any_of(c("Label", "Product"))) %>%
+    distinct(Label, .keep_all = TRUE)
+
+  # Merge annotations with counts
+  nc_with_annotations <- basic_annotations %>%
+    left_join(nc_data, by = "Label") %>%
+    relocate(Label, Product, original_names)
+
+  # Save to CSV
+  output_path <- paste0(output_dir, experiment_name, "_normalized_counts.csv")
+  nc_with_annotations %>%
+    readr::write_excel_csv(file = output_path, na = "")
+
+  return(output_path)
+}
+
+
 save_master_table <- function(allHits_compiled,
                               experiment_name,
                               output_dir_rds = NULL,
