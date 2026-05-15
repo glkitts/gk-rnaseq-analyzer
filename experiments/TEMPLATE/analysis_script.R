@@ -62,6 +62,38 @@ cat(glue("Running {experiment_name} - Step: {pipeline_step}\n"))
 if (force_regenerate) cat("Force regeneration enabled\n")
 
 # ============================================================================= #
+# LOAD ANNOTATIONS ----
+# ============================================================================= #
+# Loads default subsetted annotations
+# Modify if different needed
+
+# vc_anno <- read_rds(here(config$paths$annotation_db))
+#
+# annotations <- vc_anno$all_unfiltered %>%
+#   select(
+#     Label,
+#     Product,
+#     Type,
+#     Begin,
+#     End,
+#     Length,
+#     any_of(c(
+#       "Gene", "GeneNames", "PsortB", "SignalP_5.0"
+#     )),
+#     starts_with("GO terms"),
+#     starts_with("yildiz_"),
+#     any_of(c("Transcription Units")),
+#     starts_with("TIGR"),
+#     Locus_Tag_Old,
+#     UniProtID,
+#   ) %>%
+#   distinct(Label, .keep_all = T)
+#
+#
+# annotations %>% write_rds(here(config$paths$annotation_subset))
+annotations <- read_rds(here(config$paths$annotation_subset))
+
+# ============================================================================= #
 # COLDATA FILTERING LOGIC ----
 # ============================================================================= #
 # Customize this filtering logic for your experiment
@@ -97,6 +129,8 @@ coldata <- coldata.in %>%
   ) %>%
   select(sample, strain, condition, group, files, temperature, names)
 
+deseq2_design <- ~group
+
 # coldata %>% view
 
 # ============================================================================= #
@@ -113,38 +147,6 @@ contrast_list <- list(
   c("group", "ID_dvxrB", "ID_WT")
   # Add more contrasts as needed
 )
-
-# ============================================================================= #
-# LOAD ANNOTATIONS ----
-# ============================================================================= #
-# Loads default subsetted annotations
-# Modify if different needed
-
-# vc_anno <- read_rds(here(config$paths$annotation_db))
-# 
-# annotations <- vc_anno$all_unfiltered %>%
-#   select(
-#     Label,
-#     Product,
-#     Type,
-#     Begin,
-#     End,
-#     Length,
-#     any_of(c(
-#       "Gene", "GeneNames", "PsortB", "SignalP_5.0"
-#     )),
-#     starts_with("GO terms"),
-#     starts_with("yildiz_"),
-#     any_of(c("Transcription Units")),
-#     starts_with("TIGR"),
-#     Locus_Tag_Old,
-#     UniProtID,
-#   ) %>% 
-#   distinct(Label, .keep_all = T)
-# 
-# 
-# annotations %>% write_rds(here(config$paths$annotation_subset))
-annotations <- read_rds(here(config$paths$annotation_subset))
 
 # ============================================================================= #
 # DDS GENERATION ----
@@ -165,8 +167,8 @@ if (pipeline_step %in% c("full", "dds-only")) {
   
   # Create DDS object using enhanced functions
   dds <- create_dds_from_salmon(
-    coldata = coldata, 
-    design_formula = ~group,
+    coldata = coldata,
+    design_formula = deseq2_design,
     min_counts = config$analysis$min_counts,
     experiment_name = experiment_name
   )
@@ -228,8 +230,8 @@ if (pipeline_step %in% c("full", "analysis-only")) {
     annotations = annotations
   )
 
-  # Master table data is included in consolidated report data (_data.RDS)
-  d <- res.l.all %>%
+  # Create master table with all comparisons + normalized counts + annotations
+  master_table <- res.l.all %>%
     compile_master_table(dds) %>%
     merge_annotations(annotations)
   
@@ -253,51 +255,41 @@ if (pipeline_step %in% c("full", "analysis-only")) {
   # GSEA ANALYSIS ----
   # =========================================================================== #
   
-  cat("Running GSEA analysis...\n")
-  
-  # Run GSEA for GO Biological Process
-  if (!is.null(genesets$GObp_panther)) {
-    gsea_gobp <- run_gsea_compilation(
-      res.l.all = res.l.all,
-      gene_sets = genesets$GObp_panther,
-      gene_set_name = "GObp",
-      subset_type = "all",
-      experiment_name = experiment_name,
-      save_excel = TRUE
-    )
-  }
-  
-  # Run GSEA for GO Molecular Function
-  if (!is.null(genesets$GOmf_panther)) {
-    gsea_gomf <- run_gsea_compilation(
-      res.l.all = res.l.all,
-      gene_sets = genesets$GOmf_panther,
-      gene_set_name = "GOmf",
-      subset_type = "all",
-      experiment_name = experiment_name,
-      save_excel = TRUE
-    )
+  if (isTRUE(config$analysis$generate_gsea)) {
+    cli::cli_inform("Running GSEA analysis...")
+
+    gsea_results <- genesets |>
+      imap(\(gene_set_list, geneset_name) {
+        cli::cli_inform("  Processing geneset: {geneset_name}")
+        run_gsea_compilation(
+          res.l.all = res.l.all,
+          gene_sets = gene_set_list,
+          gene_set_name = geneset_name,
+          subset_type = "all",
+          experiment_name = experiment_name,
+          save_excel = TRUE
+        )
+      })
+  } else {
+    cli::cli_inform("GSEA skipped (generate_gsea = FALSE)")
+    gsea_results <- NULL
   }
 
   # Compile report data for publication-quality reports
   cat("Compiling report data...\n")
 
-  # Collect GSEA results if available
-  gsea_results <- list()
-  if (exists("gsea_gobp")) gsea_results$GObp <- gsea_gobp
-  if (exists("gsea_gomf")) gsea_results$GOmf <- gsea_gomf
-
   # Add experiment_name to config for report generation
   config$experiment_name <- experiment_name
 
-  # Compile comprehensive report data
+  # Compile comprehensive report data (including master table)
   report_data <- compile_report_data(
     dds = dds,
     res.l.all = res.l.all,
     contrast_list = contrast_list,
     coldata = coldata,
     config = config,
-    gsea_results = if(length(gsea_results) > 0) gsea_results else NULL
+    gsea_results = if (!is.null(gsea_results) && length(gsea_results) > 0) gsea_results else NULL,
+    master_table = master_table
   )
 
   # Save report data to technical directory

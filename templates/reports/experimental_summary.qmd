@@ -270,10 +270,10 @@ draw(ht)
 ### Overview of All Comparisons
 
 ```{r de-summary, echo=FALSE}
-# Create summary table of all comparisons
-de_summary <- map_dfr(names(res.l.all), function(comp_name) {
-  res_all <- res.l.all[[comp_name]]$all  # Changed from res.all to all
-  res_sig <- res.l.all[[comp_name]]$sig  # Changed from res.sig to sig
+# Create summary table for significant genes
+de_summary_sig <- map_dfr(names(res.l.all), function(comp_name) {
+  res_all <- res.l.all[[comp_name]]$all
+  res_sig <- res.l.all[[comp_name]]$sig
 
   tibble(
     comparison = comp_name,
@@ -285,7 +285,23 @@ de_summary <- map_dfr(names(res.l.all), function(comp_name) {
   )
 })
 
-de_summary %>%
+# Create summary table for DE genes
+de_summary_DE <- map_dfr(names(res.l.all), function(comp_name) {
+  res_all <- res.l.all[[comp_name]]$all
+  res_DE <- res.l.all[[comp_name]]$DE
+
+  tibble(
+    comparison = comp_name,
+    genes_tested = nrow(res_all),
+    de_genes = nrow(res_DE),
+    upregulated = sum(res_DE$log2FoldChange > 0, na.rm = TRUE),
+    downregulated = sum(res_DE$log2FoldChange < 0, na.rm = TRUE),
+    percent_DE = round(100 * nrow(res_DE) / nrow(res_all), 1)
+  )
+})
+
+# Display significant genes table
+de_summary_sig %>%
   rename(
     "Comparison" = comparison,
     "Genes Tested" = genes_tested,
@@ -295,7 +311,25 @@ de_summary %>%
     "% Significant" = percent_significant
   ) %>%
   knitr::kable(
-    caption = "Summary of differential expression results across all comparisons"
+    caption = "Significant Genes Summary (padj threshold only)"
+  )
+```
+
+### Differentially Expressed Genes
+
+```{r de-summary-DE, echo=FALSE}
+# Display DE genes table
+de_summary_DE %>%
+  rename(
+    "Comparison" = comparison,
+    "Genes Tested" = genes_tested,
+    "DE Genes" = de_genes,
+    "Upregulated" = upregulated,
+    "Downregulated" = downregulated,
+    "% DE" = percent_DE
+  ) %>%
+  knitr::kable(
+    caption = "Differentially Expressed Genes Summary (padj & log2FC thresholds)"
   )
 ```
 

@@ -184,7 +184,7 @@ enrich_genesets <- function(res,
     cli::cli_abort("No data provided for GSEA")
     return(tibble())
   }
-  
+  set.seed(808)
   # Create gene rankings using {{ }} in case altered ranking
   rankings_df <- res %>%
     filter(!is.na({{ ranking_col }}), !is.na({{ gene_col }})) %>%
@@ -202,6 +202,8 @@ enrich_genesets <- function(res,
   gsea_results <- fgsea::fgsea(
     pathways = genesets, 
     stats = ranked_genes, 
+    eps = 0,
+    nPermSimple = 50000,
     minSize = minSize,
     maxSize = maxSize) %>% 
     arrange(padj)

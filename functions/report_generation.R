@@ -33,9 +33,11 @@ source(here("functions/output_management.R"))
 #' @param coldata Sample metadata
 #' @param config Global configuration from analysis
 #' @param gsea_results GSEA results if available (optional)
+#' @param master_table Compiled master table with all comparisons (optional)
 #'
 #' @return List with organized data for report templates
-compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config, gsea_results = NULL) {
+compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config,
+                                gsea_results = NULL, master_table = NULL) {
 
   # Analysis metadata
   analysis_metadata <- list(
@@ -72,6 +74,9 @@ compile_report_data <- function(dds, res.l.all, contrast_list, coldata, config, 
     # Summary information for overview
     metadata = analysis_metadata,
     comparison_summary = comparison_summary,
+
+    # Master table with all comparisons + normalized counts
+    master_table = master_table,
 
     # GSEA results if available
     gsea_results = gsea_results,

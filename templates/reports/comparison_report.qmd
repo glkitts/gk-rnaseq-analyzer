@@ -63,6 +63,7 @@ if (is.null(comp_results)) {
 }
 res_all <- comp_results$all
 res_sig <- comp_results$sig
+res_DE <- comp_results$DE
 
 # Set global knitr options for publication quality
 knitr::opts_chunk$set(
@@ -103,6 +104,14 @@ if (!is.null(comparison_contrast)) {
 # Calculate summary statistics
 summary_stats <- create_summary_stats(res_all, res_sig, comparison_description)
 
+# Calculate DE statistics
+de_stats <- list(
+  "DE Genes" = nrow(res_DE),
+  "DE Upregulated" = sum(res_DE$log2FoldChange > 0, na.rm = TRUE),
+  "DE Downregulated" = sum(res_DE$log2FoldChange < 0, na.rm = TRUE),
+  "% DE" = round(100 * nrow(res_DE) / nrow(res_all), 1)
+)
+
 # Set significance thresholds
 sig_threshold <- if (!is.null(config$analysis$significance_threshold)) {
   config$analysis$significance_threshold
@@ -131,6 +140,8 @@ fc_threshold <- if (!is.null(config$analysis$log2FC_threshold)) {
 
 ### Summary Statistics
 
+**Significant Genes (padj ≤ `r sig_threshold`):**
+
 ::::::: grid
 ::: g-col-3
 **`r format(summary_stats$"Genes Tested", big.mark = ",")`** Genes Tested
@@ -149,6 +160,26 @@ fc_threshold <- if (!is.null(config$analysis$log2FC_threshold)) {
 :::
 :::::::
 
+**Differentially Expressed Genes (padj ≤ `r sig_threshold` & |log₂FC| ≥ `r fc_threshold`):**
+
+::::::: grid
+::: g-col-3
+**`r format(summary_stats$"Genes Tested", big.mark = ",")`** Genes Tested
+:::
+
+::: g-col-3
+**`r de_stats$"DE Genes"`** DE Genes
+:::
+
+::: g-col-3
+**`r de_stats$"DE Upregulated"`** Upregulated
+:::
+
+::: g-col-3
+**`r de_stats$"DE Downregulated"`** Downregulated
+:::
+:::::::
+
 ------------------------------------------------------------------------
 
 :::::: grid
@@ -161,7 +192,7 @@ fc_threshold <- if (!is.null(config$analysis$log2FC_threshold)) {
 :::
 
 ::: g-col-4
-**Percent significant:** `r summary_stats$"% Significant"`%
+**Percent significant:** `r summary_stats$"% Significant"`% | **Percent DE:** `r de_stats$"% DE"`%
 :::
 ::::::
 
@@ -320,128 +351,130 @@ if (nrow(sig_down_genes) > 0) {
 
 ## Gene Set Enrichment Analysis
 
-### GO Biological Process
+```{r gsea-all, results='asis'}
+# Genesets to visualize in reports (edit this vector to add/remove)
+report_genesets <- c("goBP", "yildiz.combined")
 
-```{r gsea-gobp}
-# Extract GObp GSEA results for this comparison
-gsea_data <- NULL
+# Filter to available genesets that we want to report
+genesets_to_plot <- intersect(report_genesets, names(gsea_results))
 
-# Navigate the nested data structure correctly
-if (!is.null(gsea_results$GObp) &&
-    !is.null(gsea_results$GObp$gsea_results) &&
-    params$comparison_name %in% names(gsea_results$GObp$gsea_results)) {
-
-  gsea_data <- gsea_results$GObp$gsea_results[[params$comparison_name]]
-}
-
-# Check if we have valid data
-if (!is.null(gsea_data) && is.data.frame(gsea_data) && nrow(gsea_data) > 0) {
-
-  # Filter for significant pathways with meaningful gene sets
-  sig_pathways <- gsea_data %>%
-    filter(padj <= 0.05, lengths(leadingEdge) > 2) %>%
-    arrange(NES) %>%
-    mutate(
-      pathway_clean = str_replace(pathway, "\\(GO", " \\(GO"),
-      pathway_clean = fct_inorder(pathway_clean)
-    )
-
-  if (nrow(sig_pathways) > 0) {
-
-    # Calculate dynamic color and size scale limits based on actual data
-    padj_range <- range(-log10(sig_pathways$padj))
-    color_min <- max(0.5, floor(padj_range[1] * 10) / 10)  # Round down to nearest 0.1
-    color_max <- ceiling(padj_range[2] * 10) / 10  # Round up to nearest 0.1
-
-    size_range <- range(lengths(sig_pathways$leadingEdge))
-    size_min <- floor(size_range[1] / 10) * 10  # Round down to nearest 10
-    size_max <- ceiling(size_range[2] / 10) * 10  # Round up to nearest 10
-
-    # Determine appropriate breaks for color scale
-    color_breaks <- if (color_max - color_min > 4) {
-      c(round(color_min), round((color_min + color_max) / 2), round(color_max))
-    } else {
-      c(round(color_min, 1), round(color_max, 1))
-    }
-
-    # Determine appropriate breaks for size scale
-    size_breaks <- if (size_max > 60) {
-      c(10, 30, 60)
-    } else if (size_max > 30) {
-      c(10, 30, size_max)
-    } else {
-      c(size_min, size_max)
-    }
-
-    # Create the plot with format-conditional styling
-    # Use HTML tags only for HTML output
-    color_label <- if (knitr::is_html_output()) {
-      "-log<sub>10</sub>(padj)"
-    } else {
-      "-log10(padj)"
-    }
-
-    size_label <- if (knitr::is_html_output()) {
-      "Leading Edge<br>Genes"
-    } else {
-      "Leading Edge\nGenes"
-    }
-
-    p <- ggplot(sig_pathways, aes(
-      x = NES,
-      y = pathway_clean,
-      color = -log10(padj),
-      size = lengths(leadingEdge)
-    )) +
-      geom_point() +
-      viridis::scale_color_viridis(
-        name = color_label,
-        limits = c(color_min, color_max),
-        breaks = color_breaks,
-        option = "viridis",
-        oob = scales::oob_squish
-      ) +
-      scale_size_continuous(
-        name = size_label,
-        range = c(2, 8),
-        limits = c(size_min, size_max),
-        breaks = size_breaks
-      ) +
-      scale_x_continuous(
-        name = "Normalized Enrichment Score (NES)",
-        limits = c(-3, 3)
-      ) +
-      labs(
-        title = paste("GO Biological Process Enrichment:", comparison_description),
-        y = NULL,
-        subtitle = paste(nrow(sig_pathways), "significant pathways (padj <= 0.05, >2 genes)")
-      ) +
-      theme_report() +
-      theme(
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.box = "vertical",
-        legend.title = element_text(size = rel(0.9)),
-        # axis.text.y = element_text(size = rel(0.75)),
-        legend.background = element_rect(fill = NA),
-        plot.margin = margin(10, 10, 10, 10)
-      )
-
-    # Apply markdown theme only for HTML
-    if (knitr::is_html_output()) {
-      p <- p + pt.mdtext
-    }
-
-    p <- p + coord_cartesian(clip = "off")
-
-    print(p)
-
-  } else {
-    cat("No significant GO Biological Process pathways found (padj ≤ 0.05 with >2 leading edge genes).\n")
-  }
-
-} else {
+if (length(genesets_to_plot) == 0) {
   cat("No GSEA results available for this comparison.\n")
+} else {
+  for (gs_name in genesets_to_plot) {
+    # Print subsection header
+    cat("\n###", gs_name, "\n\n")
+
+    gsea_data <- NULL
+    gs_entry <- gsea_results[[gs_name]]
+
+    if (!is.null(gs_entry) &&
+        !is.null(gs_entry$gsea_results) &&
+        params$comparison_name %in% names(gs_entry$gsea_results)) {
+      gsea_data <- gs_entry$gsea_results[[params$comparison_name]]
+    }
+
+    if (!is.null(gsea_data) && is.data.frame(gsea_data) && nrow(gsea_data) > 0) {
+
+      sig_pathways <- gsea_data %>%
+        filter(padj <= 0.05, lengths(leadingEdge) > 2) %>%
+        arrange(NES) %>%
+        mutate(
+          pathway_clean = str_replace(pathway, "\\(GO", " \\(GO"),
+          pathway_clean = fct_inorder(pathway_clean)
+        )
+
+      if (nrow(sig_pathways) > 0) {
+
+        padj_range <- range(-log10(sig_pathways$padj))
+        color_min <- max(0.5, floor(padj_range[1] * 10) / 10)
+        color_max <- ceiling(padj_range[2] * 10) / 10
+
+        size_range <- range(lengths(sig_pathways$leadingEdge))
+        size_min <- floor(size_range[1] / 10) * 10
+        size_max <- ceiling(size_range[2] / 10) * 10
+
+        color_breaks <- if (color_max - color_min > 4) {
+          c(round(color_min), round((color_min + color_max) / 2), round(color_max))
+        } else {
+          c(round(color_min, 1), round(color_max, 1))
+        }
+
+        size_breaks <- if (size_max > 60) {
+          c(10, 30, 60)
+        } else if (size_max > 30) {
+          c(10, 30, size_max)
+        } else {
+          c(size_min, size_max)
+        }
+
+        color_label <- if (knitr::is_html_output()) {
+          "-log<sub>10</sub>(padj)"
+        } else {
+          "-log10(padj)"
+        }
+
+        size_label <- if (knitr::is_html_output()) {
+          "Leading Edge<br>Genes"
+        } else {
+          "Leading Edge\nGenes"
+        }
+
+        p <- ggplot(sig_pathways, aes(
+          x = NES,
+          y = pathway_clean,
+          color = -log10(padj),
+          size = lengths(leadingEdge)
+        )) +
+          geom_point() +
+          viridis::scale_color_viridis(
+            name = color_label,
+            limits = c(color_min, color_max),
+            breaks = color_breaks,
+            option = "viridis",
+            oob = scales::oob_squish
+          ) +
+          scale_size_continuous(
+            name = size_label,
+            range = c(2, 8),
+            limits = c(size_min, size_max),
+            breaks = size_breaks
+          ) +
+          scale_x_continuous(
+            name = "Normalized Enrichment Score (NES)",
+            limits = c(-3, 3)
+          ) +
+          labs(
+            title = paste(gs_name, "Enrichment:", comparison_description),
+            y = NULL,
+            subtitle = paste(nrow(sig_pathways), "significant pathways (padj <= 0.05, >2 genes)")
+          ) +
+          theme_report() +
+          theme(
+            legend.position = "right",
+            legend.direction = "vertical",
+            legend.box = "vertical",
+            legend.title = element_text(size = rel(0.9)),
+            legend.background = element_rect(fill = NA),
+            plot.margin = margin(10, 10, 10, 10)
+          )
+
+        if (knitr::is_html_output()) {
+          p <- p + pt.mdtext
+        }
+
+        p <- p + coord_cartesian(clip = "off")
+
+        print(p)
+
+      } else {
+        cat("No significant pathways found (padj \u2264 0.05 with >2 leading edge genes).\n\n")
+      }
+
+    } else {
+      cat("No GSEA results available for this comparison.\n\n")
+    }
+  }
 }
 ```
 

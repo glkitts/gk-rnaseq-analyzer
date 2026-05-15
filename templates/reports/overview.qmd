@@ -25,6 +25,7 @@ report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name
 # Extract key components
 metadata <- report_data$metadata
 res.l.all <- report_data$res.l.all
+config <- report_data$config_snapshot
 ```
 
 ```{r summary-stats, include=FALSE}
@@ -37,14 +38,18 @@ summary_stats <- list(
   design_formula = metadata$design_formula
 )
 
-# Count significant genes per comparison
+# Count significant and DE genes per comparison
 sig_genes_summary <- map_dfr(names(res.l.all), function(comp_name) {
-  res <- res.l.all[[comp_name]]$sig
+  res_sig <- res.l.all[[comp_name]]$sig
+  res_DE <- res.l.all[[comp_name]]$DE
   tibble(
     comparison = comp_name,
-    n_significant = nrow(res),
-    n_upregulated = sum(res$log2FoldChange > 0, na.rm = TRUE),
-    n_downregulated = sum(res$log2FoldChange < 0, na.rm = TRUE)
+    n_significant = nrow(res_sig),
+    n_sig_upregulated = sum(res_sig$log2FoldChange > 0, na.rm = TRUE),
+    n_sig_downregulated = sum(res_sig$log2FoldChange < 0, na.rm = TRUE),
+    n_DE = nrow(res_DE),
+    n_DE_upregulated = sum(res_DE$log2FoldChange > 0, na.rm = TRUE),
+    n_DE_downregulated = sum(res_DE$log2FoldChange < 0, na.rm = TRUE)
   )
 })
 
@@ -78,6 +83,11 @@ Comparisons
 Total Significant Genes
 :::
 
+::: {.g-col-3}
+**`r sum(sig_genes_summary$n_DE)`**
+Total DE Genes
+:::
+
 :::
 
 ## Reports Available
@@ -101,14 +111,25 @@ cat(paste(comparison_links, collapse = "\n"))
 ## Summary by Comparison
 
 ```{r comparison-table, echo=FALSE}
+# Get threshold values for caption
+sig_threshold <- config$analysis$significance_threshold
+fc_threshold <- config$analysis$log2FC_threshold
+
 sig_genes_summary %>%
   rename(
     "Comparison" = comparison,
-    "Significant Genes" = n_significant,
-    "Upregulated" = n_upregulated,
-    "Downregulated" = n_downregulated
+    "Sig Genes" = n_significant,
+    "Sig Up" = n_sig_upregulated,
+    "Sig Down" = n_sig_downregulated,
+    "DE Genes" = n_DE,
+    "DE Up" = n_DE_upregulated,
+    "DE Down" = n_DE_downregulated
   ) %>%
-  knitr::kable(format = "html", table.attr = 'class="table table-striped"')
+  knitr::kable(
+    format = "html",
+    table.attr = 'class="table table-striped"',
+    caption = paste0("Sig: padj ≤ ", sig_threshold, " | DE: padj ≤ ", sig_threshold, " & |log₂FC| ≥ ", fc_threshold)
+  )
 ```
 
 ---

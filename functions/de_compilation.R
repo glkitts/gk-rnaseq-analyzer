@@ -22,23 +22,31 @@ here::i_am("functions/de_compilation.R")
 
 #' Create compiled master table using full_join approach
 #'
+#' Creates a wide-format table with all genes and their DE statistics from all
+#' comparisons, plus normalized counts. Selects only key columns before joining
+#' for robustness, then merges annotations can be done by calling code.
+#'
 #' @param res.l.all Named list of comparison results from workflow
 #' @param dds DESeqDataSet object for normalized counts
-#' @param config Configuration list with analysis parameters
 #'
-#' @return List with allHits_compiled and sigHits_compiled tibbles
+#' @return Tibble with Label, comparison-specific log2FC/padj/baseMean columns,
+#'         and normalized count columns (prefixed with nc_)
 compile_master_table <- function(res.l.all, dds) {
-  # Rename comparison columns and full join for allHits_compiled
+  # Select only key columns and rename with comparison-specific prefixes
+  # This ensures robust joining on Label only
   allHits_compiled <- res.l.all %>%
     imap(function(comparison_res, comparison_name) {
       comparison_res$all %>%
+        select(Label, log2FoldChange, padj, baseMean) %>%
         dplyr::rename(
-          !!paste0(comparison_name, ".log2FC") := log2FoldChange,!!paste0(comparison_name, ".padj") := padj
+          !!paste0(comparison_name, ".log2FC") := log2FoldChange,
+          !!paste0(comparison_name, ".padj") := padj,
+          !!paste0(comparison_name, ".baseMean") := baseMean
         )
     }) %>%
-    purrr::reduce(full_join)
-  
-  # Add normalized counts
+    purrr::reduce(full_join, by = "Label")
+
+  # Add normalized counts from DDS
   nc_data <- counts(dds, normalized = TRUE) %>%
     as.data.frame() %>%
     rownames_to_column("original_names") %>%
@@ -49,13 +57,12 @@ compile_master_table <- function(res.l.all, dds) {
       too_few = "align_start",
       too_many = "drop"
     ) %>%
-    # select(-original_names) %>%
     distinct(Label, .keep_all = TRUE) %>%
-    rename_with( ~ paste0("nc_", .x), -Label)
-  
+    rename_with(~ paste0("nc_", .x), -Label)
+
   allHits_compiled <- allHits_compiled %>%
-    left_join(nc_data)
-  
+    left_join(nc_data, by = "Label")
+
   return(allHits_compiled)
 }
 

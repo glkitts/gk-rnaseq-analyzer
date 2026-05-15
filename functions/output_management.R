@@ -237,7 +237,7 @@ save_excel_enhanced <- function(data_list,
     
     # Add worksheet and data
     wb <<- wb$add_worksheet(sheet = sheet_name)$
-      add_data(sheet = sheet_name, x = sheet_data, na.strings = "")
+      add_data(sheet = sheet_name, x = sheet_data, na.strings = NULL)
   })
   
   # Apply formatting to all sheets
