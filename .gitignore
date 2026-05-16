@@ -59,6 +59,8 @@ reference/
 
 # Internal documentation (keep locally, not in repo)
 PIPELINE_DOCUMENTATION.md
+CLAUDE.md
 
 # Experiment outputs
 experiments/*/outputs
+.positai
