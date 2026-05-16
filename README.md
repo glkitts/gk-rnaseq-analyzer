@@ -177,6 +177,7 @@ analysis:
   log2FC_threshold: 1.0
   min_counts: 2.0
   lfcShrinkage_method: "ashr"
+  gsea_ranking_metric: "stat"   # "stat" or "log2FoldChange"
 ```
 
 ### Experiment Setup

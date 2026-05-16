@@ -23,6 +23,7 @@ analysis:
   lfcShrinkage_method: "ashr"
   gsea_min_pathway_size: 15
   gsea_max_pathway_size: 1000
+  gsea_ranking_metric: "stat"   # column for GSEA gene ranking ("stat" or "log2FoldChange")
   generate_gsea: true  # Easy way to turn on/off
 plotting:
   base_size: 8.0

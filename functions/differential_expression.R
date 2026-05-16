@@ -42,7 +42,7 @@ format_comparison_name <- function(contrast, separator = "_v_") {
 #' @param parse_rownames Logical, whether to parse gene labels from rownames (default: TRUE)
 #' @param ... Additional arguments passed to lfcShrink()
 #'
-#' @return Data frame with Label, log2FoldChange, padj, baseMean columns
+#' @return Data frame with Label, log2FoldChange, stat, padj, baseMean columns
 generate_resLFC <- function(dds,
                             contrast,
                             shrink_method = "ashr",
@@ -52,10 +52,11 @@ generate_resLFC <- function(dds,
   res <- results(dds, contrast = contrast)
   
   res.LFC <- as.data.frame(lfcShrink(dds, contrast = contrast, type = shrink_method))
-  
+  res.LFC$stat <- res$stat
+
   if (parse_rownames == T) {
     res.LFC <- res.LFC %>%
-      select(log2FoldChange, padj, baseMean) %>%
+      select(log2FoldChange, stat, padj, baseMean) %>%
       rownames_to_column(var = "original_names") %>%
       separate_wider_delim(
         original_names,
@@ -160,14 +161,14 @@ merge_annotations <- function(res_df,
 
 #' Run gene set enrichment analysis (GSEA) on differential expression results
 #'
-#' Performs GSEA using fgsea package with ranked gene list based on log2FoldChange.
+#' Performs GSEA using fgsea package with ranked gene list based on the Wald stat.
 #' Uses fgsea defaults for pathway size filtering.
 #'
 #' @param res Data frame with differential expression results
 #' @param genesets Named list of character vectors (gene sets)
 #' @param geneset.type String, identifier for gene set type (e.g., "GObp", "GOmf")
 #' @param gene_col Column name for gene identifiers (default: Label)
-#' @param ranking_col Column name for ranking metric (default: log2FoldChange)
+#' @param ranking_col Column name for ranking metric (default: stat)
 #' @param minSize Integer, minimum pathway size (default: 2)
 #' @param maxSize Integer, maximum pathway size (default: uses fgsea default)
 #'
@@ -176,13 +177,22 @@ enrich_genesets <- function(res,
                             genesets,
                             geneset.type = "GObp",
                             gene_col = Label,
-                            ranking_col = log2FoldChange, 
+                            ranking_col = stat,
                             minSize = config$analysis$gsea_min_pathway_size, 
                             maxSize = config$analysis$gsea_max_pathway_size) {
   # Input validation
   if (nrow(res) == 0) {
     cli::cli_abort("No data provided for GSEA")
     return(tibble())
+  }
+  ranking_col_name <- rlang::as_label(rlang::enquo(ranking_col))
+  if (!ranking_col_name %in% names(res)) {
+    cli::cli_abort(
+      "Ranking column {.code {ranking_col_name}} not found in results. \\
+      If using {.code stat}, rerun the analysis stage to regenerate results \\
+      with the updated pipeline ({.code --analysis-only --force}).",
+      call = rlang::caller_env()
+    )
   }
   set.seed(808)
   # Create gene rankings using {{ }} in case altered ranking
@@ -265,6 +275,7 @@ unnest_genesets <- function(gsea_results,
 #' @param gene_set_name String identifier (e.g., "GObp", "GOmf")
 #' @param subset_type Which subset to use for ranking ("all", "sig", "DE")
 #' @param experiment_name String, experiment identifier
+#' @param ranking_metric String, column used to rank genes for GSEA (default: from config, "stat")
 #' @param save_excel Logical, whether to save Excel file (default: TRUE)
 #'
 #' @return List with gsea_results and unnested_results
@@ -273,6 +284,7 @@ run_gsea_compilation <- function(res.l.all,
                                  gene_set_name,
                                  subset_type = "all",
                                  experiment_name,
+                                 ranking_metric = config$analysis$gsea_ranking_metric %||% "stat",
                                  save_excel = TRUE) {
   
   cli_inform("Running GSEA: {gene_set_name} ({subset_type})")
@@ -295,7 +307,7 @@ run_gsea_compilation <- function(res.l.all,
           genesets = gene_sets,
           geneset.type = gene_set_name,
           gene_col = Label,
-          ranking_col = log2FoldChange
+          ranking_col = !!rlang::sym(ranking_metric)
         )
       
       return(gsea_result)

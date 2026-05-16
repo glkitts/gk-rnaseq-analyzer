@@ -70,6 +70,7 @@ compile_significant_hits <- function(res.l.all) {
   sigHits_compiled <- res.l.all %>%
     imap(function(comparison_res, comparison_name) {
       comparison_res$sig %>%
+        select(-any_of("stat")) %>%
         dplyr::rename(
           !!paste0(comparison_name, ".log2FC") := log2FoldChange,
           !!paste0(comparison_name, ".padj") := padj
