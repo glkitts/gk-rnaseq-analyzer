@@ -147,7 +147,8 @@ merge_annotations <- function(res_df,
           any_of("Transcription Units"),
           starts_with("TIGR"),
           any_of(c("Locus_Tag_Old", "UniProtID")),
-          starts_with("nc_")
+          starts_with("nc_"),
+          starts_with("vst_")
         )
     }
   }

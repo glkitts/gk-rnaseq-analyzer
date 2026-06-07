@@ -149,6 +149,66 @@ save_normalized_counts_csv <- function(dds,
   nc_with_annotations %>%
     readr::write_excel_csv(file = output_path, na = "")
 
+  # Also save VST counts alongside normalized counts
+  save_vst_counts_csv(dds = dds, experiment_name = experiment_name,
+                      annotations = annotations, output_dir = output_dir)
+
+  return(output_path)
+}
+
+
+save_vst_counts_csv <- function(dds,
+                                experiment_name,
+                                annotations,
+                                output_dir = NULL) {
+  #' Save DESeq2 VST counts to CSV with basic gene annotations
+  #'
+  #' Computes variance-stabilizing transformation (design-aware, blind=FALSE)
+  #' and saves a genes x samples matrix. Format mirrors _normalized_counts.csv.
+  #'
+  #' @param dds DESeq2 dataset object (must have DESeq() already run)
+  #' @param experiment_name String, experiment identifier
+  #' @param annotations Data frame with gene annotations
+  #' @param output_dir String, optional custom output directory
+  #'
+  #' @return String path to created CSV file
+
+  ensure_experiment_outputs(experiment_name)
+
+  if (is.null(output_dir)) {
+    output_dir <- here("experiments",
+                       experiment_name,
+                       "outputs/data_tables/")
+  }
+
+  # Compute VST (design-aware)
+  vsd <- vst(dds, blind = FALSE)
+
+  vst_data <- assay(vsd) %>%
+    as.data.frame() %>%
+    rownames_to_column("original_names") %>%
+    separate_wider_delim(
+      original_names,
+      delim = "|",
+      names = c("Label", NA, NA),
+      too_few = "align_start",
+      too_many = "drop",
+      cols_remove = FALSE
+    ) %>%
+    distinct(Label, .keep_all = TRUE)
+
+  basic_annotations <- annotations %>%
+    select(any_of(c("Label", "Product"))) %>%
+    distinct(Label, .keep_all = TRUE)
+
+  vst_with_annotations <- basic_annotations %>%
+    left_join(vst_data, by = "Label") %>%
+    relocate(Label, Product, original_names)
+
+  output_path <- paste0(output_dir, experiment_name, "_vst_counts.csv")
+  vst_with_annotations %>%
+    readr::write_excel_csv(file = output_path, na = "")
+
   return(output_path)
 }
 
@@ -392,6 +452,9 @@ calculate_optimized_column_widths <- function(data) {
       return(max(header_width, 11))
     } else if (str_detect(col_name, "nc_")) {
       # Normalized count columns (unchanged)
+      return(max(header_width, 10))
+    } else if (str_detect(col_name, "vst_")) {
+      # VST count columns
       return(max(header_width, 10))
     } else if (str_detect(col_name, "Type|Begin|End|Length")) {
       # Metadata columns (unchanged)

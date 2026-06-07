@@ -63,6 +63,24 @@ compile_master_table <- function(res.l.all, dds) {
   allHits_compiled <- allHits_compiled %>%
     left_join(nc_data, by = "Label")
 
+  # Add VST counts (variance-stabilizing transformation, design-aware)
+  vsd <- vst(dds, blind = FALSE)
+  vst_data <- assay(vsd) %>%
+    as.data.frame() %>%
+    rownames_to_column("original_names") %>%
+    separate_wider_delim(
+      original_names,
+      delim = "|",
+      names = c("Label", NA, NA),
+      too_few = "align_start",
+      too_many = "drop"
+    ) %>%
+    distinct(Label, .keep_all = TRUE) %>%
+    rename_with(~ paste0("vst_", .x), -Label)
+
+  allHits_compiled <- allHits_compiled %>%
+    left_join(vst_data, by = "Label")
+
   return(allHits_compiled)
 }
 
@@ -260,7 +278,8 @@ create_readme_sheet <- function(res.l.all,
     "log2FoldChange: Log2 fold change (treatment vs control)",
     "padj: Adjusted p-value (Benjamini-Hochberg)",
     "baseMean: Mean normalized expression across samples",
-    "nc_: Normalized count columns for individual samples"
+    "nc_: Normalized count columns for individual samples",
+    "vst_: Variance-stabilizing transformed count columns for individual samples"
   )
   
   for (def in column_definitions) {
