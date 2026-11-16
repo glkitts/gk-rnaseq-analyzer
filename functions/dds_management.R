@@ -27,18 +27,27 @@ here::i_am("functions/dds_management.R")
 #' @param design_formula Formula for DESeq2 design (default: ~group)
 #' @param min_counts Minimum count threshold for filtering low-expressed transcripts (default: 2)
 #' @param experiment_name Optional experiment name for logging and validation
+#' @param gene_level Logical. If TRUE, sum transcript-level Salmon estimates to
+#'   gene (locus tag) level with tximport before DESeq2, so loci annotated as
+#'   multiple fragments (e.g. frameshifted/pseudogenes in N16961, such as hapR
+#'   VC0583) are tested as one gene. Gene ID = text before the first "|" in the
+#'   transcript name. If FALSE (default, original behaviour), each transcript is
+#'   tested separately and duplicate locus tags are later collapsed by
+#'   generate_resLFC() keeping the highest-baseMean fragment.
 #'
 #' @return DESeqDataSet object with filtering stats and original coldata attached as attributes
 #'
 #' @examples
 #' \dontrun{
 #' dds <- create_dds_from_salmon(coldata, design_formula = ~condition, min_counts = 2)
+#' dds <- create_dds_from_salmon(coldata, gene_level = TRUE)
 #' }
 create_dds_from_salmon <- function(coldata,
                                    design_formula = ~ group,
                                    min_counts = 2,
-                                   experiment_name = NULL) {
-  
+                                   experiment_name = NULL,
+                                   gene_level = FALSE) {
+
   # Basic validation
   required_cols <- c("files", "names")
   missing_cols <- setdiff(required_cols, colnames(coldata))
@@ -49,20 +58,35 @@ create_dds_from_salmon <- function(coldata,
     cli_abort("coldata cannot be empty")
   }
 
-  # Create tximeta object
-  gse <- tximeta(coldata, skipMeta = TRUE)
-  
-  # Create DESeq2 object and run analysis
-  dds <- DESeqDataSet(gse, design = design_formula)
+  if (isTRUE(gene_level)) {
+    # Gene-level: sum fragments sharing a locus tag (tximport + tx2gene)
+    tx_names <- readr::read_tsv(coldata$files[1], col_select = "Name",
+                                show_col_types = FALSE)$Name
+    tx2gene <- tibble::tibble(TXNAME = tx_names,
+                              GENEID = stringr::str_extract(tx_names, "^[^|]+"))
+    n_split <- sum(duplicated(tx2gene$GENEID))
+    cli_inform("Gene-level summarization: {nrow(tx2gene)} transcripts -> {dplyr::n_distinct(tx2gene$GENEID)} genes ({n_split} extra fragment{?s} merged)")
+
+    txi <- tximport::tximport(setNames(coldata$files, coldata$names),
+                              type = "salmon", tx2gene = tx2gene)
+    dds <- DESeqDataSetFromTximport(txi, colData = coldata, design = design_formula)
+  } else {
+    # Transcript-level (original behaviour)
+    gse <- tximeta(coldata, skipMeta = TRUE)
+    dds <- DESeqDataSet(gse, design = design_formula)
+  }
+
+  # Run analysis
   dds <- DESeq(dds)
-  
+
   # Filter low counts and attach metadata
   filter_result <- filter_low_counts(dds, min_counts = min_counts)
-  
+
   # Attach metadata to DDS
   attr(filter_result$dds, "filtering_stats") <- filter_result$filtering_stats
   attr(filter_result$dds, "original_coldata") <- coldata
-  
+  attr(filter_result$dds, "gene_level") <- isTRUE(gene_level)
+
   return(filter_result$dds)
 }
 
@@ -265,7 +289,8 @@ build_metadata <- function(dds, experiment_name, coldata, config, paths) {
     analysis_params = list(
       min_counts = if (!is.null(config)) config$analysis$min_counts else 2,
       significance_threshold = if (!is.null(config)) config$analysis$significance_threshold else 0.05,
-      fold_change_threshold = if (!is.null(config)) config$analysis$fold_change_threshold else 1.0
+      fold_change_threshold = if (!is.null(config)) config$analysis$fold_change_threshold else 1.0,
+      gene_level = isTRUE(attr(dds, "gene_level"))
     ),
     
     source_paths = if (!is.null(config)) {

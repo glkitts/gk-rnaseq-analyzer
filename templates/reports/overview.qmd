@@ -18,6 +18,7 @@ suppressPackageStartupMessages({
   library(DT)
   library(here)
 })
+source(here("functions", "conflict_prefs.R"))  # resolve tidyverse vs Bioconductor name clashes
 
 # Load report data
 report_data <- read_rds(file.path(params$data_dir, paste0(params$experiment_name, "_data.RDS")))

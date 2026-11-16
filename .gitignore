@@ -60,7 +60,22 @@ reference/
 # Internal documentation (keep locally, not in repo)
 PIPELINE_DOCUMENTATION.md
 CLAUDE.md
+CLAUDE_*.md
+planned_changes.md
+gsea_features_feasibility.md
+notes/
 
-# Experiment outputs
+# Local experiment data packages, snapshots, logs (not in repo)
+AJ_LonA_RNAseq/
+LG_pmB/
+shared_resources/250829_shared_resources/
+*_output.txt
+proto_test.pdf
+
+# Experiments: keep all real experiments local; only the TEMPLATE is public
+experiments/*
+!experiments/TEMPLATE/
+
+# Experiment outputs (also covers TEMPLATE/outputs if one is ever created)
 experiments/*/outputs
 .positai

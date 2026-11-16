@@ -13,6 +13,7 @@ suppressPackageStartupMessages({
   library(cli)
   library(here)
 })
+source(here("functions", "conflict_prefs.R"))  # resolve tidyverse vs Bioconductor name clashes
 
 here::i_am("functions/run_utils.R")
 

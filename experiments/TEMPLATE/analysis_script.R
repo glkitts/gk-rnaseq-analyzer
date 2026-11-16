@@ -30,6 +30,7 @@ source(here("functions/de_compilation.R"))
 source(here("functions/report_generation.R"))
 # source(here("functions/processing_helpers.R"))
 source(here("functions/output_management.R"))
+source(here("functions/conflict_prefs.R"))  # resolve tidyverse vs Bioconductor name clashes (source last)
 
 # ============================================================================= #
 # EXPERIMENT CONFIG ----
@@ -45,6 +46,11 @@ config <- read_yaml(here("config", "global_settings.yaml"))
 # config$analysis$min_counts <- 1
 # config$analysis$significance_threshold <- 0.01
 # config$plotting$base_size <- 10
+
+# Gene-level quantification: TRUE sums Salmon transcript fragments sharing a
+# locus tag (e.g. N16961 frameshifted/split genes such as hapR VC0583) via
+# tximport before DESeq2. FALSE = original transcript-level behaviour.
+gene_level <- TRUE
 
 ## Curated pathway subsets for DE compilation output
 pathway_subsets.path <- here(config$paths$pathway_subsets)
@@ -170,7 +176,8 @@ if (pipeline_step %in% c("full", "dds-only")) {
     coldata = coldata,
     design_formula = deseq2_design,
     min_counts = config$analysis$min_counts,
-    experiment_name = experiment_name
+    experiment_name = experiment_name,
+    gene_level = gene_level
   )
   
   # Save DDS and metadata
